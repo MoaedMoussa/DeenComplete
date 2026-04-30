@@ -1,0 +1,898 @@
+const {
+  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+  Header, Footer, AlignmentType, HeadingLevel, BorderStyle, WidthType,
+  ShadingType, VerticalAlign, PageNumber, PageBreak, LevelFormat,
+  UnderlineType, TabStopType, TabStopPosition
+} = require('docx');
+const fs = require('fs');
+
+// ─── Color palette ────────────────────────────────────────────────
+const GREEN_DARK  = "1A5C3A";
+const GREEN_MID   = "2E8B57";
+const GREEN_LIGHT = "D4EDDA";
+const GOLD        = "C8973A";
+const GOLD_LIGHT  = "FFF8E7";
+const CREAM       = "FAFAF5";
+const GRAY_DARK   = "2C2C2C";
+const GRAY_MID    = "555555";
+const GRAY_LIGHT  = "EEEEEE";
+const WHITE       = "FFFFFF";
+
+// ─── Borders ──────────────────────────────────────────────────────
+const cellBorder = { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" };
+const cellBorders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
+const noBorder = { style: BorderStyle.NONE, size: 0, color: WHITE };
+const noBorders = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder };
+
+// ─── Helpers ──────────────────────────────────────────────────────
+const sp = (before = 0, after = 0) => ({ spacing: { before, after } });
+const bold = (text, size = 24, color = GRAY_DARK) =>
+  new TextRun({ text, bold: true, size, color, font: "Arial" });
+const reg = (text, size = 22, color = GRAY_MID) =>
+  new TextRun({ text, size, color, font: "Arial" });
+const colored = (text, color, size = 22, b = false) =>
+  new TextRun({ text, bold: b, size, color, font: "Arial" });
+
+const h1 = (text) => new Paragraph({
+  heading: HeadingLevel.HEADING_1,
+  spacing: { before: 360, after: 180 },
+  children: [new TextRun({ text, bold: true, size: 40, color: GREEN_DARK, font: "Arial" })]
+});
+
+const h2 = (text) => new Paragraph({
+  heading: HeadingLevel.HEADING_2,
+  spacing: { before: 280, after: 140 },
+  children: [new TextRun({ text, bold: true, size: 32, color: GREEN_MID, font: "Arial" })]
+});
+
+const h3 = (text) => new Paragraph({
+  heading: HeadingLevel.HEADING_3,
+  spacing: { before: 200, after: 100 },
+  border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: GOLD, space: 1 } },
+  children: [new TextRun({ text, bold: true, size: 26, color: GOLD, font: "Arial" })]
+});
+
+const body = (text, before = 80, after = 80) => new Paragraph({
+  spacing: { before, after },
+  children: [reg(text)]
+});
+
+const bullet = (text, sub = false) => new Paragraph({
+  numbering: { reference: "bullets", level: sub ? 1 : 0 },
+  spacing: { before: 40, after: 40 },
+  children: [reg(text, 22, GRAY_DARK)]
+});
+
+const divider = () => new Paragraph({
+  spacing: { before: 160, after: 160 },
+  border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: GREEN_MID, space: 1 } },
+  children: []
+});
+
+const pageBreak = () => new Paragraph({
+  children: [new PageBreak()]
+});
+
+// ─── Highlight box (gold/green shaded paragraph) ──────────────────
+const infoBox = (title, content, bg = GOLD_LIGHT, lineColor = GOLD) => new Table({
+  width: { size: 9360, type: WidthType.DXA },
+  columnWidths: [9360],
+  rows: [
+    new TableRow({ children: [
+      new TableCell({
+        borders: { top: { style: BorderStyle.THICK, size: 8, color: lineColor },
+                   bottom: cellBorder, left: { style: BorderStyle.THICK, size: 8, color: lineColor }, right: cellBorder },
+        shading: { fill: bg, type: ShadingType.CLEAR },
+        margins: { top: 120, bottom: 120, left: 180, right: 180 },
+        children: [
+          new Paragraph({ spacing: { before: 40, after: 60 }, children: [bold(title, 24, lineColor)] }),
+          new Paragraph({ spacing: { before: 0, after: 40 }, children: [reg(content, 22, GRAY_DARK)] })
+        ]
+      })
+    ]})
+  ]
+});
+
+// ─── Feature row table ────────────────────────────────────────────
+const featureTable = (rows) => new Table({
+  width: { size: 9360, type: WidthType.DXA },
+  columnWidths: [2800, 6560],
+  rows: [
+    new TableRow({
+      tableHeader: true,
+      children: [
+        new TableCell({
+          borders: cellBorders,
+          shading: { fill: GREEN_DARK, type: ShadingType.CLEAR },
+          margins: { top: 100, bottom: 100, left: 150, right: 150 },
+          children: [new Paragraph({ children: [bold("Feature", 22, WHITE)] })]
+        }),
+        new TableCell({
+          borders: cellBorders,
+          shading: { fill: GREEN_DARK, type: ShadingType.CLEAR },
+          margins: { top: 100, bottom: 100, left: 150, right: 150 },
+          children: [new Paragraph({ children: [bold("Description", 22, WHITE)] })]
+        })
+      ]
+    }),
+    ...rows.map((r, i) => new TableRow({ children: [
+      new TableCell({
+        borders: cellBorders,
+        shading: { fill: i % 2 === 0 ? GREEN_LIGHT : WHITE, type: ShadingType.CLEAR },
+        margins: { top: 80, bottom: 80, left: 150, right: 150 },
+        children: [new Paragraph({ children: [bold(r[0], 20, GREEN_DARK)] })]
+      }),
+      new TableCell({
+        borders: cellBorders,
+        shading: { fill: i % 2 === 0 ? GREEN_LIGHT : WHITE, type: ShadingType.CLEAR },
+        margins: { top: 80, bottom: 80, left: 150, right: 150 },
+        children: [new Paragraph({ children: [reg(r[1], 20, GRAY_DARK)] })]
+      })
+    ]}))
+  ]
+});
+
+// ─── Two-column info table ────────────────────────────────────────
+const twoColTable = (pairs) => new Table({
+  width: { size: 9360, type: WidthType.DXA },
+  columnWidths: [4680, 4680],
+  rows: pairs.map((p, i) => new TableRow({ children: [
+    new TableCell({
+      borders: cellBorders,
+      shading: { fill: i % 2 === 0 ? GOLD_LIGHT : WHITE, type: ShadingType.CLEAR },
+      margins: { top: 80, bottom: 80, left: 150, right: 150 },
+      children: [new Paragraph({ children: [bold(p[0], 20, GRAY_DARK)] })]
+    }),
+    new TableCell({
+      borders: cellBorders,
+      shading: { fill: i % 2 === 0 ? GOLD_LIGHT : WHITE, type: ShadingType.CLEAR },
+      margins: { top: 80, bottom: 80, left: 150, right: 150 },
+      children: [new Paragraph({ children: [reg(p[1], 20, GRAY_DARK)] })]
+    })
+  ]}))
+});
+
+// ─── Cover page ───────────────────────────────────────────────────
+const coverPage = [
+  new Paragraph({ spacing: { before: 1440, after: 200 }, alignment: AlignmentType.CENTER,
+    children: [new TextRun({ text: "بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ", size: 40, color: GOLD, font: "Arial", bold: true })] }),
+  new Paragraph({ spacing: { before: 0, after: 120 }, alignment: AlignmentType.CENTER,
+    children: [reg("In the Name of Allah, the Most Gracious, the Most Merciful", 24, GOLD)] }),
+  new Paragraph({ spacing: { before: 400, after: 100 }, alignment: AlignmentType.CENTER,
+    children: [new TextRun({ text: "DEEN COMPLETE", size: 72, bold: true, color: GREEN_DARK, font: "Arial" })] }),
+  new Paragraph({ spacing: { before: 0, after: 80 }, alignment: AlignmentType.CENTER,
+    children: [new TextRun({ text: "All-in-One Islamic Application", size: 36, color: GREEN_MID, font: "Arial", bold: true })] }),
+  new Paragraph({ spacing: { before: 0, after: 500 }, alignment: AlignmentType.CENTER,
+    children: [new TextRun({ text: "Full Product Documentation & Feature Specification", size: 26, color: GRAY_MID, font: "Arial", italics: true })] }),
+  new Table({
+    width: { size: 9360, type: WidthType.DXA }, columnWidths: [9360],
+    rows: [new TableRow({ children: [new TableCell({
+      borders: { top: { style: BorderStyle.SINGLE, size: 8, color: GOLD },
+                 bottom: { style: BorderStyle.SINGLE, size: 8, color: GOLD }, left: noBorder, right: noBorder },
+      shading: { fill: CREAM, type: ShadingType.CLEAR },
+      margins: { top: 200, bottom: 200, left: 360, right: 360 },
+      children: [
+        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 40, after: 60 },
+          children: [bold("The Ultimate Muslim Companion — No More Juggling Multiple Apps", 26, GREEN_DARK)] }),
+        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 40 },
+          children: [reg("Quran  •  Salah  •  Qibla  •  Dhikr  •  Subha  •  Hadith  •  Dua  •  Zakat  •  Hajj  •  Umrah  •  and much more", 22, GRAY_MID)] })
+      ]
+    })]})],
+  }),
+  new Paragraph({ spacing: { before: 600, after: 80 }, alignment: AlignmentType.CENTER,
+    children: [reg("Version 1.0  |  April 2026  |  Confidential Product Documentation", 20, GRAY_MID)] }),
+  pageBreak()
+];
+
+// ─── Document content ─────────────────────────────────────────────
+const children = [
+  ...coverPage,
+
+  // ── SECTION 1: Executive Summary ──
+  h1("1. Executive Summary"),
+  body("DEEN COMPLETE is a comprehensive, all-in-one Islamic mobile application designed to replace the need for dozens of separate apps. From the complete Holy Quran with recitation, Tajweed, and Tafsir — to Salah times, Qibla direction, digital Subha (Tasbih), Dhikr, Dua libraries, Hadith collections, Hajj & Umrah guides, Zakat calculator, Islamic calendar, Halal food scanner, and a full Islamic learning platform — everything a Muslim needs for their daily Deen is united in a single, beautiful, offline-capable application."),
+  body("The application is built with a deep respect for Islamic values, full Arabic RTL support, multiple scholarly calculation methods, and a clean user experience that serves reverts, scholars, children, and elders alike. Privacy is paramount — no user data is sold, no haram advertising is permitted."),
+  new Paragraph({ spacing: { before: 140, after: 120 }, children: [bold("Core Mission:", 22, GREEN_DARK), reg(" To be the single most complete, most accurate, and most trusted digital Islamic companion on earth — serving 1.8 billion Muslims in their daily acts of worship, knowledge, and community.", 22, GRAY_DARK)] }),
+  divider(),
+
+  // ── SECTION 2: App Overview ──
+  h1("2. App Overview & Identity"),
+  twoColTable([
+    ["App Name", "Deen Complete"],
+    ["Tagline", "Everything for Your Deen. One App."],
+    ["Platforms", "iOS (iPhone, iPad, Apple Watch) | Android (Phone, Tablet, WearOS) | Web PWA"],
+    ["Languages", "Arabic (RTL), English, Urdu, French, Bahasa, Turkish, Bengali, Spanish, + 30 more"],
+    ["Offline Mode", "Full offline capability for Quran, Dhikr, Dua, Prayer Times, Hijri Calendar"],
+    ["Target Users", "All Muslims worldwide — reverts, scholars, children, elderly, travelers"],
+    ["Monetization", "Free core features + Premium subscription (no haram ads)"],
+    ["Data Policy", "Zero data selling. Privacy-first architecture."],
+    ["Compliance", "Sharia-compliant content only. No interest-based finance, no haram content."],
+  ]),
+  divider(),
+
+  // ── SECTION 3: Full Feature List ──
+  h1("3. Complete Feature Specification"),
+  body("The following sections detail every module of the application. Each module is a fully developed, standalone system that integrates seamlessly with the others."),
+
+  pageBreak(),
+
+  // ── 3.1 QURAN ──
+  h2("3.1 — Holy Quran (Al-Quran Al-Kareem)"),
+  infoBox("Core Module", "The Quran module is the heart of the application. It provides the complete Uthmanic Mushaf with world-class recitation, learning, and memorization tools.", GREEN_LIGHT, GREEN_DARK),
+  new Paragraph({ spacing: { before: 160, after: 80 } }),
+  h3("3.1.1 Quran Reading"),
+  featureTable([
+    ["Full Mushaf", "Complete 114 Surahs, 30 Juz, 6,236 Ayahs in authentic Uthmanic Rasm script"],
+    ["Multiple Scripts", "Uthmanic, Indopak, Simple (for beginners), Large Print mode for elderly"],
+    ["Color Tajweed", "Color-coded Tajweed rules inline (Madd, Ghunna, Qalqalah, Idgham, etc.)"],
+    ["Word-by-Word", "Tap any word to see its Arabic root, morphology, grammar, transliteration & translation"],
+    ["Verse Highlight", "Highlight current verse while listening — follow along with the reciter"],
+    ["Night/Day Mode", "Automatic dark mode, sepia mode, and fully customizable background colors"],
+    ["Font & Size", "Adjustable Arabic font size, line spacing, and page layout"],
+    ["Offline Access", "Full Quran text and audio available offline after one-time download"],
+    ["Bookmarks", "Unlimited bookmarks across Surahs, Ayahs, and Juz with custom labels"],
+    ["Search", "Full-text Arabic and translated search across the entire Quran"],
+    ["Jump To", "Navigate by Surah name, number, Juz, Ruku, or Page number"],
+    ["Reading Plans", "Daily Quran reading plans: 30 days, 60 days, or custom schedule"],
+    ["Last Read", "Auto-save last reading position; pick up exactly where you left off"],
+    ["Copy & Share", "Share individual Ayahs as beautiful image cards to social media or WhatsApp"],
+    ["Notes", "Add personal notes and reflections to any Ayah"],
+  ]),
+
+  h3("3.1.2 Quran Audio & Recitation"),
+  featureTable([
+    ["50+ Reciters", "Sheikh Mishary Al-Afasy, Abdul Basit, Al-Husary, Sudais, Shuraim, Ghamdi & more"],
+    ["Playback Modes", "Single Ayah, Single Surah, Juz, full continuous, or custom range"],
+    ["Looping", "Loop any Ayah or range (1x, 3x, 5x, 10x, custom) for memorization"],
+    ["Speed Control", "0.5x – 2.0x playback speed with pitch preservation"],
+    ["Background Play", "Audio continues when screen is locked or app is backgrounded"],
+    ["Download Audio", "Download recitations for specific Surahs or the full Quran offline"],
+    ["Translation Audio", "Listen to translated audio alongside Arabic recitation (selected languages)"],
+    ["Sleep Timer", "Auto-stop recitation after a set time or number of Ayahs"],
+  ]),
+
+  h3("3.1.3 Translations & Tafsir"),
+  featureTable([
+    ["50+ Translations", "Translations in 50+ languages by verified Islamic scholars"],
+    ["Multiple Tafsir", "Ibn Kathir, Al-Jalalayn, Saadi, Maududi, Tabari — side-by-side or toggle"],
+    ["Transliteration", "Full phonetic transliteration for every Ayah (Latin script)"],
+    ["Parallel View", "Read Arabic + translation side by side on tablets and large screens"],
+    ["Offline Tafsir", "Download any Tafsir for offline use"],
+  ]),
+
+  h3("3.1.4 Quran Memorization (Hifz Program)"),
+  featureTable([
+    ["Hifz Planner", "Personalized memorization curriculum with daily targets and progress tracking"],
+    ["Repeat & Hide", "Hear an Ayah, then hide text and try to recite from memory"],
+    ["AI Tajweed Coach", "Microphone-based real-time Tajweed correction — AI listens and guides"],
+    ["Streak Tracker", "Daily memorization streaks with milestones and achievement badges"],
+    ["Test Yourself", "Random Ayah completion tests to reinforce memorization"],
+    ["Progress Map", "Visual Quran map showing which Ayahs and Surahs have been memorized"],
+    ["Revision Schedule", "Spaced repetition system to prevent forgetting previously memorized pages"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.2 SALAH & PRAYER TIMES ──
+  h2("3.2 — Salah & Prayer Times"),
+  h3("3.2.1 Prayer Times"),
+  featureTable([
+    ["GPS-Based Times", "Automatic accurate prayer times using real-time GPS — works worldwide"],
+    ["Calculation Methods", "ISNA, MWL, Egyptian, Umm Al-Qura (Saudi), Karachi, Gulf, Tehran, 12+ methods"],
+    ["Manual Override", "Adjust individual prayer times manually to match local mosque schedule"],
+    ["Madhab Settings", "Hanafi, Shafi'i/Maliki/Hanbali (Asr calculation difference) — user selects"],
+    ["All 5 Prayers", "Fajr, Dhuhr, Asr, Maghrib, Isha — with Suhoor and Iftar during Ramadan"],
+    ["Midnight & Last Third", "Optional display of Islamic midnight and last third of the night for Tahajjud"],
+    ["Offline Times", "Works fully offline using coordinates cached from last GPS fix"],
+    ["High Latitude", "Special algorithms for high-latitude countries (Nordic, Northern Canada, etc.)"],
+    ["Next Prayer Widget", "Home screen widget showing time to next prayer with countdown timer"],
+    ["Annual Timetable", "Export or view full monthly/annual prayer timetable for any city"],
+  ]),
+
+  h3("3.2.2 Adhan (Call to Prayer)"),
+  featureTable([
+    ["30+ Muezzins", "Mishary Afasy, Abdul Basit, Makkah, Madinah, Al-Aqsa, Turkish, and more"],
+    ["Per-Prayer Adhan", "Set a different muezzin for each of the 5 prayers individually"],
+    ["Adhan Volume", "Independent volume control separate from phone volume"],
+    ["Fajr Adhan", "Special Fajr Adhan with 'As-Salatu Khayrun Minan-Nawm' (Al-Fajriyya)"],
+    ["Silent Modes", "Do Not Disturb override so Adhan sounds even in silent mode (user-enabled)"],
+    ["Iqama Reminder", "Configurable Iqama (second call) reminder after a set number of minutes"],
+    ["Adhan Preview", "Listen and preview any Adhan before setting it"],
+    ["Gentle Wake", "Gradual volume increase option for Fajr so as not to startle"],
+  ]),
+
+  h3("3.2.3 Prayer Tracker & Salah Log"),
+  featureTable([
+    ["Prayer Log", "Mark each prayer as prayed on time, prayed late, or missed"],
+    ["Qada Tracker", "Track missed prayers (Qada) and schedule make-up prayers with reminders"],
+    ["Streaks", "Prayer streak counter — track consecutive days of not missing any Salah"],
+    ["Weekly/Monthly Stats", "Visual charts showing prayer consistency over time"],
+    ["Nafl Prayers", "Log optional prayers: Tahajjud, Duha, Tarawih, Witr, Rawatib Sunnah"],
+    ["Friday (Jumu'ah)", "Special Jumu'ah reminder and tracker every Friday"],
+    ["Menstrual Mode", "Women's mode to pause and adjust prayer tracking during menstruation days with relevant duas"],
+    ["Accountability", "Optional shared prayer journal with a family member or study partner"],
+  ]),
+
+  h3("3.2.4 How to Pray (Salah Guide)"),
+  featureTable([
+    ["Step-by-Step", "Full illustrated step-by-step guide for all 5 daily prayers with correct positions"],
+    ["Wudhu Guide", "Animated step-by-step guide for performing Wudhu correctly with dua at each step"],
+    ["Tayammum Guide", "Guide for Tayammum (dry ablution) when water is unavailable"],
+    ["Ghusl Guide", "Complete guide for Ghusl (ritual bath)"],
+    ["Beginner Mode", "Simplified guide for reverts or new Muslims learning to pray from scratch"],
+    ["Prayer Postures", "Visual diagrams and descriptions of each Rukn (pillar) of Salah"],
+    ["Recitations in Prayer", "All Surahs, Tasbihat, and Duas recited during Salah with Arabic, transliteration, and meaning"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.3 QIBLA ──
+  h2("3.3 — Qibla Finder"),
+  featureTable([
+    ["Live Compass", "Real-time Qibla compass using phone sensors with smooth needle animation"],
+    ["3D Kaaba View", "Visual 3D representation of the Kaaba showing exact direction"],
+    ["AR Mode", "Augmented Reality Qibla — point phone at horizon and see direction overlaid on camera"],
+    ["Offline Qibla", "Works fully offline using stored GPS coordinates — no internet needed"],
+    ["Distance to Kaaba", "Shows exact distance in km/miles from current location to the Kaaba"],
+    ["City Search", "Find Qibla direction for any city worldwide by search"],
+    ["Calibration Guide", "Step-by-step sensor calibration guide for maximum accuracy"],
+    ["Widget", "Home screen Qibla widget showing direction at a glance"],
+    ["Map View", "World map showing a line from user's location pointing to Makkah"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.4 DHIKR & SUBHA ──
+  h2("3.4 — Dhikr, Tasbih & Digital Subha"),
+  h3("3.4.1 Digital Subha (Tasbih Counter)"),
+  featureTable([
+    ["Tap Counter", "Large, easy-to-tap digital Tasbih bead counter with satisfying click sound/vibration"],
+    ["Multiple Counters", "Simultaneously track multiple Dhikr in sequence (e.g., 33 Subhan'Allah, 33 Alhamdu, 34 Allahu Akbar)"],
+    ["Custom Dhikr", "Create custom Dhikr sets with any phrase, target count, and repetition"],
+    ["Auto-Advance", "Automatically advance to the next Dhikr when target count is reached with audio cue"],
+    ["Session History", "View history of all Dhikr sessions with date, time, and count"],
+    ["Daily Goals", "Set daily Dhikr goals and track completion as part of the daily worship dashboard"],
+    ["Wrist Support", "Apple Watch & WearOS support — count Tasbih directly from wrist"],
+    ["Lock Screen", "Keep screen on during Dhikr so counter doesn't sleep"],
+    ["Eyes-Closed Mode", "Vibration-only mode for Dhikr with eyes closed"],
+    ["Sound Options", "Bead click, gentle bell, silent, or custom sound for each tap"],
+  ]),
+
+  h3("3.4.2 Pre-Loaded Dhikr Sets"),
+  featureTable([
+    ["Post-Salah Adhkar", "Full set of Tasbihat and Adhkar after each of the 5 prayers (33+33+34 method)"],
+    ["Morning Adhkar", "Complete morning (Sabah) Adhkar with Arabic, transliteration, translation, and audio"],
+    ["Evening Adhkar", "Complete evening (Masa') Adhkar with full detail"],
+    ["Sleeping Adhkar", "Dua and Dhikr before sleeping — Ayat Al-Kursi, 3 Quls, and more"],
+    ["Waking Up Dhikr", "Dhikr upon waking (Alhamdulillahilladhi ahyana...)"],
+    ["99 Names of Allah", "Full Asma' Al-Husna with meanings, audio pronunciation, and individual counter"],
+    ["Salawat on the Prophet", "Multiple Salawat formulations (Ibrahim, simple, extended) with counters"],
+    ["Istighfar Sets", "Astaghfirullah sets with count tracking and multiple wordings"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.5 DUA ──
+  h2("3.5 — Dua (Supplications) Library"),
+  infoBox("Hisnul Muslim Integration", "The app includes the full Fortress of the Muslim (Hisnul Muslim) dua collection — the most trusted compilation of authentic duas from Quran and Sunnah.", GREEN_LIGHT, GREEN_DARK),
+  new Paragraph({ spacing: { before: 140, after: 80 } }),
+  featureTable([
+    ["1000+ Duas", "Comprehensive library of duas for every occasion from Quran and authentic Sunnah"],
+    ["Categories", "Morning, Evening, Sleeping, Waking, Eating, Drinking, Entering Home, Leaving Home, Travel, Illness, Rain, Thunder, Mosque, Wudhu, Salah, Hajj, Ramadan, Grief, and 50+ more"],
+    ["Arabic + Transliteration", "Every dua shown in full Arabic with phonetic transliteration and full translation"],
+    ["Audio Pronunciation", "Audio recordings of every dua by verified scholars for correct pronunciation"],
+    ["Favorites", "Save favorite duas for quick access"],
+    ["Daily Dua Notification", "Receive a random or selected dua each day as a reminder"],
+    ["Dua for Occasion", "Smart suggestions — e.g., when Fajr time arrives, show the morning Adhkar"],
+    ["Offline", "All duas fully available offline"],
+    ["Source Reference", "Each dua shows its source (Hadith book, Sahih level, and narrator)"],
+    ["Search", "Search duas by keyword, occasion, or Arabic phrase"],
+    ["Ramadan Duas", "Special Ramadan section: Suhoor, Iftar, Laylat Al-Qadr, Tarawih duas"],
+    ["Dua Builder", "Create and save personal duas in your own words with reminder setting"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.6 HADITH ──
+  h2("3.6 — Hadith Library"),
+  featureTable([
+    ["50,000+ Hadiths", "Complete collections: Bukhari, Muslim, Tirmidhi, Abu Dawud, Nasai, Ibn Majah, Muwatta, Riyadh Al-Salihin, 40 Nawawi"],
+    ["Authenticity Filter", "Filter by Sahih (authentic), Hasan (good), Da'if (weak) — scholars-verified grading"],
+    ["Search", "Full-text search across all Hadith books in Arabic and English"],
+    ["Topics", "Browse hadiths by topic: Faith, Prayer, Fasting, Zakat, Marriage, Business, Ethics, etc."],
+    ["Daily Hadith", "Receive a daily Hadith notification with Arabic text, translation, and commentary"],
+    ["Bookmarks & Notes", "Bookmark and annotate any Hadith for personal study"],
+    ["Share", "Share any Hadith as a beautiful card or plain text"],
+    ["Arabic Text", "Full Arabic Hadith text with diacritics (Tashkeel)"],
+    ["Offline", "All Hadith collections downloadable for full offline use"],
+    ["Hadith Number", "Jump directly to any Hadith by book and number"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.7 ISLAMIC CALENDAR ──
+  h2("3.7 — Islamic Calendar & Hijri Dates"),
+  featureTable([
+    ["Dual Calendar", "View both Hijri (Islamic) and Gregorian dates side by side every day"],
+    ["Today's Hijri Date", "Prominent display of today's accurate Hijri date on home screen"],
+    ["Islamic Events", "All major Islamic dates: Ramadan, Eid Al-Fitr, Eid Al-Adha, Ashura, Mawlid, Laylat Al-Qadr, Islamic New Year, Rajab, Sha'ban"],
+    ["Ramadan Calendar", "Full Ramadan Suhoor/Iftar timetable for location, day by day"],
+    ["Countdown", "Countdown timer to next major Islamic event (e.g., 'Ramadan in 47 days')"],
+    ["Notifications", "Advance notifications for upcoming Islamic events (1 week, 3 days, 1 day before)"],
+    ["Conversion Tool", "Convert any Gregorian date to Hijri and vice versa"],
+    ["Moon Phase", "Live moon phase tracker with crescent moon sighting information for Ramadan start"],
+    ["Export", "Export the Islamic calendar to your phone's native calendar app"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.8 RAMADAN MODE ──
+  h2("3.8 — Ramadan Special Mode"),
+  infoBox("Seasonal Feature", "Ramadan Mode activates automatically each Ramadan, transforming the app with a full suite of tools dedicated to the blessed month.", GOLD_LIGHT, GOLD),
+  new Paragraph({ spacing: { before: 140, after: 80 } }),
+  featureTable([
+    ["Suhoor Alarm", "Smart Suhoor alarm that adjusts daily based on true Fajr time for your location"],
+    ["Iftar Alarm", "Iftar notification exactly at Maghrib with a countdown shown throughout the day"],
+    ["Fasting Tracker", "Log each day's fast — track which days are completed, pending, or missed"],
+    ["Qada Fasting", "Track missed fasts with reminders to make them up after Ramadan"],
+    ["Ramadan Quran Plan", "Guided plan to complete the full Quran in 30 days during Ramadan"],
+    ["Tarawih Guide", "Full Tarawih prayer guide with number of Rakaat, recommended Surahs, and duas"],
+    ["Laylat Al-Qadr", "Special Laylat Al-Qadr night guide for the last 10 nights with recommended a'maal"],
+    ["Sadaqah Tracker", "Log daily charity given during Ramadan with total tracker"],
+    ["Good Deeds Log", "Daily log of good deeds done — Quran, charity, fasting, prayers, kindness"],
+    ["Iftar Inspiration", "Daily inspiring hadith or Quranic verse revealed at Iftar time"],
+    ["Eid Countdown", "Countdown to Eid Al-Fitr with Eid Mubarak dua and greeting cards to share"],
+    ["Zakat Al-Fitr", "Zakat Al-Fitr calculator with local nisab values"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.9 HAJJ & UMRAH ──
+  h2("3.9 — Hajj & Umrah Complete Guide"),
+  featureTable([
+    ["Step-by-Step Hajj", "Complete Hajj guide covering all 3 types: Ifrad, Qiran, Tamattu' — illustrated"],
+    ["Step-by-Step Umrah", "Full Umrah guide from Miqat to end, with duas at each step"],
+    ["Tawaf Counter", "Tawaf round counter (1–7) with a vibration/alert at each completion"],
+    ["Sa'i Counter", "Sa'i lap counter (1–7 between Safa and Marwa) with relevant duas at each point"],
+    ["Ihram Guide", "What is permitted and prohibited in Ihram state with Ihram duas"],
+    ["Miqat Locator", "GPS-based Miqat locator — shows which Miqat you should enter Ihram from"],
+    ["Makkah Map", "Interactive map of Masjid Al-Haram and surrounding holy sites"],
+    ["Madinah Map", "Interactive map of Masjid An-Nabawi and Madinah holy sites"],
+    ["Hajj Duas", "All duas for each Hajj station: Arafah, Muzdalifah, Mina, Jamarat"],
+    ["Jamarat Guide", "Stoning of the devil guide with timing recommendations and stone count"],
+    ["Kaaba Live Stream", "Live stream from Masjid Al-Haram and Masjid An-Nabawi within the app"],
+    ["Hajj Packing List", "Customizable packing checklist for Hajj and Umrah preparations"],
+    ["Hajj Finance Planner", "Save toward Hajj costs with a halal savings goal tracker"],
+    ["Group Mode", "Family/group Hajj coordination — share location and progress with travel companions"],
+    ["Health Tips", "Medical and health advice specifically for the physical demands of Hajj"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.10 ZAKAT ──
+  h2("3.10 — Zakat & Islamic Finance"),
+  featureTable([
+    ["Zakat Calculator", "Full Zakat calculation: gold, silver, cash, investments, business goods, livestock, crops"],
+    ["Nisab Live Value", "Real-time gold and silver nisab values in 150+ currencies"],
+    ["Zakat Al-Fitr", "Automatic Zakat Al-Fitr calculator per person based on local food prices"],
+    ["Zakat Due Date", "Track your Zakat lunar year and get a reminder when Zakat is due annually"],
+    ["Charity Log", "Log all Sadaqah, Zakat, and charity payments throughout the year"],
+    ["Trusted Charities", "Directory of verified Islamic charities and relief organizations worldwide"],
+    ["Sadaqah Jariyah", "Track ongoing charity projects (wells, masjids, orphan sponsorship)"],
+    ["Islamic Finance Guide", "Educational content on halal vs haram finance, interest (riba), and permissible investment"],
+    ["Qurbani Planner", "Qurbani (Eid sacrifice) guide with eligibility, shares, and trusted online booking options"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.11 ISLAMIC KNOWLEDGE ──
+  h2("3.11 — Islamic Knowledge & Learning"),
+  h3("3.11.1 Aqeedah & Fiqh"),
+  featureTable([
+    ["Pillars of Islam", "Detailed guide to all 5 Pillars with rulings, conditions, and common questions"],
+    ["Pillars of Iman", "Full explanation of the 6 Pillars of Faith with Quranic evidence"],
+    ["Fiqh Guides", "Practical fiqh rulings on purity (Taharah), prayer, fasting, Zakat, marriage, transactions"],
+    ["Madhab Info", "Overview of the 4 major Sunni Madhabs with respectful comparative notes"],
+    ["Q&A Library", "10,000+ common Islamic questions answered by scholars — searchable"],
+    ["Islamic Glossary", "Comprehensive glossary of Arabic and Islamic terms with pronunciation"],
+  ]),
+
+  h3("3.11.2 Seerah & Islamic History"),
+  featureTable([
+    ["Seerah of the Prophet", "Detailed biography of Prophet Muhammad (SAW) with timeline and maps"],
+    ["Companions (Sahabah)", "Profiles of major Sahabah — Abu Bakr, Umar, Uthman, Ali, and 100+ more"],
+    ["Islamic History", "Key events in Islamic history — Hijra, battles, caliphates, golden age"],
+    ["Prophets' Stories", "Stories of all 25 Prophets mentioned in the Quran with lessons"],
+    ["Islamic Civilizations", "Educational content on the contributions of Islamic civilization to science, math, medicine"],
+  ]),
+
+  h3("3.11.3 Arabic Learning"),
+  featureTable([
+    ["Arabic Alphabet", "Interactive Arabic alphabet with correct pronunciation audio for each letter"],
+    ["Quran Arabic Basics", "Learn the most common words in the Quran — understand as you read"],
+    ["Tajweed Course", "Full Tajweed course from beginner to advanced with audio examples and tests"],
+    ["Arabic Script Practice", "Writing practice for Arabic letters with stroke order guides"],
+    ["Vocabulary Builder", "Daily Quranic vocabulary cards (spaced repetition)"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.12 HALAL LIFESTYLE ──
+  h2("3.12 — Halal Lifestyle Tools"),
+  featureTable([
+    ["Halal Food Finder", "GPS-based halal restaurant and food outlet finder with ratings and reviews"],
+    ["Barcode Scanner", "Scan product barcodes to check halal/haram status of ingredients instantly"],
+    ["Ingredient Checker", "Manual ingredient lookup for E-codes, additives, and common food substances"],
+    ["Mosque Finder", "Find the nearest mosque worldwide with distance, opening hours, and directions"],
+    ["Prayer Room Finder", "Locate prayer rooms in airports, malls, hotels, and public buildings"],
+    ["Islamic Travel Guide", "City guides for Muslim travelers: halal food, mosques, prayer times, etiquette"],
+    ["Modest Fashion Guide", "Educational content on Islamic dress guidelines for men and women"],
+    ["Islamic Parenting", "Practical Islamic parenting tips and age-appropriate children's content"],
+    ["Marriage & Family", "Islamic guidance on nikah, marital rights, and family values"],
+    ["Business Ethics", "Islamic business ethics guide: halal contracts, partnerships, prohibited practices"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.13 NAMES OF ALLAH ──
+  h2("3.13 — 99 Names of Allah (Asma' Al-Husna)"),
+  featureTable([
+    ["All 99 Names", "Full list of all 99 Beautiful Names of Allah in Arabic, transliteration, and meaning"],
+    ["Audio Pronunciation", "Correct pronunciation audio for each Name"],
+    ["Dhikr Counter", "Individual counter for each Name so you can recite each one individually"],
+    ["Meanings & Tafsir", "Deep explanation of each Name's meaning with Quranic and Hadith references"],
+    ["Daily Name", "Receive one Name of Allah daily as a reflection and reminder"],
+    ["Memorization Mode", "Flashcard system to memorize all 99 Names"],
+    ["Poster Generator", "Create and share beautiful calligraphy cards of the Names"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.14 KIDS SECTION ──
+  h2("3.14 — Kids Islamic Corner"),
+  featureTable([
+    ["Kids Quran", "Large-font, child-friendly Quran reader with colorful Tajweed and audio"],
+    ["Short Surahs Tutor", "Interactive lessons for the 30 short Surahs (Juz Amma) with listen-repeat practice"],
+    ["Islamic Stories", "Animated and illustrated stories of the Prophets, Sahabah, and Islamic values"],
+    ["Kids Duas", "Simple, child-friendly duas with audio: before eating, sleeping, entering bathroom, etc."],
+    ["Arabic for Kids", "Fun, gamified Arabic alphabet and number lessons"],
+    ["Islamic Quizzes", "Age-appropriate Islamic knowledge quizzes with reward badges"],
+    ["Parental Controls", "Kids mode with locked adult content and usage time limits"],
+    ["Coloring Pages", "Downloadable Islamic coloring pages featuring geometric patterns and calligraphy"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.15 COMMUNITY ──
+  h2("3.15 — Community & Social Features"),
+  featureTable([
+    ["Dua Wall", "Share duas and requests with the global Ummah — receive ameen and support"],
+    ["Prayer Together", "Virtual group prayer tracking — join friends and family in prayer consistency challenge"],
+    ["Islamic Events", "Discover local Islamic events, lectures, and classes near you"],
+    ["Halaqa Groups", "Create or join Quran study circles (halaqa) with discussion tools"],
+    ["Scholar Content", "Curated lectures, khutbahs, and lessons from trusted Islamic scholars"],
+    ["Islamic News", "Curated Islamic news from trustworthy sources worldwide"],
+    ["Moderated Feed", "Safe, moderated community feed — no trolls, no haram content, strictly monitored"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.16 PERSONAL DASHBOARD ──
+  h2("3.16 — Personal Worship Dashboard"),
+  featureTable([
+    ["Daily Dashboard", "Home screen showing: next prayer countdown, today's Quran goal, Dhikr progress, and Dua of the day"],
+    ["Worship Streak", "Master streak tracking all acts of worship: Salah, Quran reading, Dhikr, Fasting"],
+    ["Weekly Report", "Personalized weekly spiritual health report — where you excelled and what to improve"],
+    ["Goals System", "Set custom daily spiritual goals: number of Ayahs, Dhikr count, pages read, charity"],
+    ["Niyyah Journal", "Daily intention (Niyyah) journal — set and review your intentions each morning"],
+    ["Mood & Iman Tracker", "Track your spiritual state and identify patterns that help or hurt your Iman"],
+    ["Good Deeds Log", "Log good deeds daily — feeding others, helping, smiling, etc."],
+    ["Gratitude Journal", "Islamic gratitude journal with prompts rooted in Quranic teachings"],
+    ["Achievements", "Unlock Islamic milestone achievements (e.g., completed Quran, 30-day prayer streak)"],
+    ["Family Dashboard", "Shared family worship tracking for parents and children"],
+  ]),
+
+  pageBreak(),
+
+  // ── 3.17 MEDIA & CONTENT ──
+  h2("3.17 — Islamic Media & Content"),
+  featureTable([
+    ["Islamic Lectures", "Stream and download lectures from trusted scholars worldwide"],
+    ["Quran Radio", "24/7 live Quran radio stations from Makkah, Madinah, and international stations"],
+    ["Nasheed Library", "Curated halal nasheeds (acappella and permissible Islamic songs)"],
+    ["Kids Islamic TV", "Muslim-friendly children's educational videos — Islamic values, stories, songs"],
+    ["Documentary Content", "Islamic history and civilization documentaries"],
+    ["Kaaba Live Stream", "Live HD stream of Masjid Al-Haram — watch Tawaf live anytime"],
+    ["Madinah Live Stream", "Live stream of Masjid An-Nabawi"],
+    ["Islamic Art Gallery", "Beautiful Islamic calligraphy, geometric art, and mosque photography"],
+    ["Wallpapers", "Free downloadable Islamic wallpapers for phone and desktop"],
+  ]),
+
+  pageBreak(),
+
+  // ── SECTION 4: Technical Architecture ──
+  h1("4. Technical Architecture"),
+  h2("4.1 Platform Requirements"),
+  twoColTable([
+    ["iOS Minimum", "iOS 15.0 and above (iPhone 8 and newer, all iPads)"],
+    ["Android Minimum", "Android 8.0 (API 26) and above"],
+    ["Wearables", "Apple Watch Series 4+ (watchOS 7+) | WearOS 2.0+"],
+    ["Tablet Support", "Full iPad and Android tablet optimized layouts"],
+    ["Web PWA", "Progressive Web App for desktop and mobile browsers"],
+    ["Offline Size", "Base app: ~50MB | Full Quran text: ~15MB | Audio per Surah: ~2–5MB"],
+    ["Languages RTL", "Full Right-to-Left layout for Arabic, Urdu, and other RTL languages"],
+  ]),
+
+  h2("4.2 Data & Privacy"),
+  twoColTable([
+    ["Prayer Times Engine", "Custom astronomical calculation engine supporting 15+ global methods"],
+    ["Qibla Engine", "Great Circle geodesic formula for 100% accurate Qibla worldwide"],
+    ["Quran Text Source", "Tanzil.net verified Uthmanic Mushaf digital corpus"],
+    ["Hadith Source", "Sunnah.com API-equivalent verified corpus"],
+    ["Data Storage", "All user data encrypted and stored locally on device by default"],
+    ["Account Sync", "Optional cloud backup via encrypted user account"],
+    ["No Data Selling", "Zero third-party data sharing or selling — ever"],
+    ["No Haram Ads", "No advertising for prohibited products/services regardless of revenue"],
+    ["GDPR/Privacy Laws", "Full compliance with GDPR, UAE PDPL, Saudi NDMO, and global privacy laws"],
+    ["Crash Reporting", "Anonymous crash analytics only (no personal data)"],
+  ]),
+
+  h2("4.3 Offline Capabilities"),
+  body("The following features are fully functional with zero internet connection after initial download:"),
+  featureTable([
+    ["Quran Text", "Full Quran text, all translations, all Tafsir — 100% offline"],
+    ["Quran Audio", "Downloaded recitations play fully offline"],
+    ["Prayer Times", "Calculated offline from GPS coordinates — works in airplane mode"],
+    ["Qibla", "Compass works fully offline — uses device magnetometer only"],
+    ["Dhikr & Tasbih", "All counters work offline"],
+    ["Duas", "Full Dua library offline"],
+    ["Hadith", "Downloaded Hadith books work offline"],
+    ["Islamic Calendar", "Full Hijri calendar offline"],
+    ["Zakat Calculator", "Works offline (nisab values cached from last connection)"],
+    ["Hajj/Umrah Guide", "Full guide with maps works offline"],
+    ["99 Names", "All content and audio offline"],
+    ["Kids Corner", "Stories and lessons offline"],
+  ]),
+
+  pageBreak(),
+
+  // ── SECTION 5: UX/UI Design ──
+  h1("5. UX/UI Design Guidelines"),
+  h2("5.1 Design Philosophy"),
+  body("DEEN COMPLETE is designed with a clean, spiritual aesthetic that inspires calm, focus, and connection to Allah. The interface avoids distracting visual noise, excessive animations, or game-like elements that are inconsistent with the sanctity of Islamic worship."),
+  featureTable([
+    ["Primary Colors", "Deep Forest Green (#1A5C3A) + Warm Gold (#C8973A) — classic Islamic palette"],
+    ["Typography", "Clean sans-serif for UI | Arabic Naskh for Quran text | Arabic Kufic for decorative headers"],
+    ["Islamic Geometry", "Subtle geometric patterns (girih, muqarnas motifs) as decorative accents"],
+    ["Calligraphy", "Authentic Islamic calligraphy used for Bismillah, section headers, and iconography"],
+    ["Dark Mode", "True OLED dark mode with warm night tones (no harsh blue light for night worship)"],
+    ["Accessibility", "Large font support, high contrast mode, screen reader (VoiceOver/TalkBack) compatible"],
+    ["Animations", "Minimal, gentle transitions — crescent moon, stars, prayer beads. Never distracting."],
+    ["RTL Layout", "100% right-to-left layout for Arabic, Urdu, and Farsi users"],
+  ]),
+
+  h2("5.2 Navigation Structure"),
+  featureTable([
+    ["Home Dashboard", "Central hub showing: time to next Salah, Quran position, Dhikr goals, daily Dua"],
+    ["Quran Tab", "Full Quran reader, audio, hifz tools — always one tap away"],
+    ["Prayer Tab", "Prayer times, Adhan settings, Qibla, prayer tracker, Salah guide"],
+    ["Worship Tab", "Dhikr/Tasbih, Dua library, 99 Names, morning/evening Adhkar"],
+    ["Learn Tab", "Hadith, Islamic knowledge, Seerah, Arabic learning, kids corner"],
+    ["Tools Tab", "Zakat calculator, Halal scanner, Mosque finder, Islamic calendar, Hajj/Umrah"],
+    ["Community Tab", "Dua wall, scholar content, Islamic news, events, Halaqa groups"],
+    ["Profile & Settings", "Personal dashboard, goals, streaks, prayer log, account, preferences"],
+  ]),
+
+  pageBreak(),
+
+  // ── SECTION 6: Subscription Model ──
+  h1("6. Subscription & Monetization Model"),
+  infoBox("Ethical Monetization Commitment", "DEEN COMPLETE is built on a 'deen-first' monetization philosophy. The core acts of worship (Quran, Prayer, Qibla, Dhikr, Dua) are permanently free. No haram advertising will ever appear on the platform. Premium features enhance the experience but never restrict essential ibadah.", GOLD_LIGHT, GOLD),
+  new Paragraph({ spacing: { before: 160, after: 80 } }),
+  h2("6.1 Free Tier (Forever Free)"),
+  featureTable([
+    ["Full Quran Reading", "Complete Quran text, basic translations, word-by-word — always free"],
+    ["Prayer Times & Adhan", "All 5 prayer times, Adhan notifications, Qibla — always free"],
+    ["Dhikr Counter", "Basic Tasbih counter with essential Dhikr sets — always free"],
+    ["Dua Library", "Core Dua collection (Hisnul Muslim) — always free"],
+    ["Daily Hadith", "1 Hadith per day — always free"],
+    ["Islamic Calendar", "Hijri calendar and Islamic events — always free"],
+    ["Zakat Calculator", "Basic Zakat calculation — always free"],
+    ["Mosque Finder", "Basic mosque finder — always free"],
+    ["Kids Corner Basic", "Core kids Quran and short Surahs — always free"],
+  ]),
+
+  h2("6.2 Premium Subscription"),
+  twoColTable([
+    ["Monthly Plan", "$4.99/month — cancel anytime"],
+    ["Annual Plan", "$34.99/year — save 40% vs monthly"],
+    ["Family Plan", "$59.99/year — up to 6 family members"],
+    ["Lifetime Plan", "$149 — one-time purchase, all future features included"],
+    ["Student Discount", "50% discount with verified student email"],
+    ["Scholarship", "Free premium for Muslims in financial hardship — apply in-app"],
+  ]),
+
+  h2("6.3 Premium Features"),
+  featureTable([
+    ["Offline Audio", "Download all Quran recitations for offline listening"],
+    ["All Reciters", "Access to full library of 50+ reciters (free: 5 reciters)"],
+    ["All Tafsir", "Unlock all 6 Tafsir books (free: Ibn Kathir only)"],
+    ["All Translations", "All 50+ language translations (free: 3 translations)"],
+    ["AI Tajweed Coach", "Real-time AI recitation feedback and correction"],
+    ["Full Hadith Library", "All 9 Hadith collections offline (free: Bukhari only)"],
+    ["Hifz Program", "Complete Quran memorization program with AI coach"],
+    ["Ad-Free Experience", "Zero ads, zero interruptions to worship"],
+    ["Advanced Analytics", "Detailed spiritual progress reports and insights"],
+    ["Family Dashboard", "Shared family worship tracking"],
+    ["Cloud Backup", "Sync bookmarks, notes, and progress across devices"],
+    ["Custom Themes", "Unlocked theme colors, Quran page styles, and backgrounds"],
+    ["Priority Support", "24/7 priority customer support"],
+  ]),
+
+  pageBreak(),
+
+  // ── SECTION 7: Competitive Advantages ──
+  h1("7. Competitive Advantages"),
+  body("The Islamic app market is large but fragmented. Users currently need 5–15 separate apps to access all the features DEEN COMPLETE provides in one. Here is how DEEN COMPLETE outperforms the competition:"),
+  featureTable([
+    ["True All-in-One", "No other single app combines all features listed in this document. Competitors cover 20–30% of this feature set."],
+    ["No Haram Ads", "Muslim Pro shows ads (gambling-adjacent, mixed-gender content) — DEEN COMPLETE will never show haram advertising."],
+    ["Privacy First", "Several competitors have faced criticism for selling user location data. DEEN COMPLETE stores everything locally."],
+    ["Offline Everything", "Most competitors require internet for core features. DEEN COMPLETE is 100% functional offline."],
+    ["AI Tajweed Coach", "Real-time AI-powered Tajweed correction is a premium differentiator not available in most competing apps."],
+    ["AR Qibla", "Augmented reality Qibla finder is a next-generation feature rarely offered."],
+    ["Kids Mode", "A fully dedicated, safe, and fun Islamic kids section — most competitors have weak or no kids content."],
+    ["Scholarship Access", "Free premium access for financially disadvantaged Muslims — a unique ethical commitment."],
+    ["Scholar-Verified", "All content is verified by qualified Islamic scholars — no AI-generated religious rulings."],
+    ["Watch Support", "Full Apple Watch and WearOS app — rare among Islamic apps."],
+  ]),
+
+  pageBreak(),
+
+  // ── SECTION 8: Roadmap ──
+  h1("8. Development Roadmap"),
+  h2("Phase 1 — Core Launch (Months 1–6)"),
+  featureTable([
+    ["Month 1–2", "Quran Reader, Prayer Times, Adhan, Qibla, Tasbih Counter, Basic Dua Library"],
+    ["Month 3–4", "Hadith Library, Islamic Calendar, Hijri date, Zakat Calculator, 99 Names"],
+    ["Month 5–6", "Hajj & Umrah Guide, Morning/Evening Adhkar, Mosque Finder, Kids Basic Section"],
+  ]),
+
+  h2("Phase 2 — Growth (Months 7–12)"),
+  featureTable([
+    ["Month 7–8", "Hifz Program, Ramadan Mode, Barcode Halal Scanner, Community Dua Wall"],
+    ["Month 9–10", "AI Tajweed Coach, Arabic Learning Module, Personal Dashboard, Streak System"],
+    ["Month 11–12", "Islamic Media (Lectures, Radio), AR Qibla, Apple Watch App, WearOS App"],
+  ]),
+
+  h2("Phase 3 — Excellence (Year 2)"),
+  featureTable([
+    ["Q1", "Smart Home integration (Adhan on smart speakers), Smart TV app"],
+    ["Q2", "Advanced AI Islamic Q&A (Fatwa assistant — scholar-reviewed)"],
+    ["Q3", "Full Halaqa group tools, Scholar live sessions, Family Plan"],
+    ["Q4", "Hajj Group coordination system, Nusuk permit integration, Multi-platform sync"],
+  ]),
+
+  pageBreak(),
+
+  // ── SECTION 9: Localization ──
+  h1("9. Localization & Regional Support"),
+  twoColTable([
+    ["Arabic (MSA)", "Full RTL support, Uthmanic script, all content in Arabic"],
+    ["English", "Primary interface language"],
+    ["Urdu", "Full RTL support — major Muslim language"],
+    ["French", "For North African and West African Muslim communities"],
+    ["Turkish", "Full Turkish localization"],
+    ["Bahasa (Indonesian/Malay)", "Largest Muslim country Indonesia — high priority"],
+    ["Bengali", "Bangladesh and Indian Bengali communities"],
+    ["Hausa", "West African Muslim communities"],
+    ["Somali", "Somali Muslim diaspora"],
+    ["Swahili", "East African Muslim communities"],
+    ["Pashto/Dari", "Afghanistan and diaspora communities"],
+    ["Farsi/Persian", "Iranian Muslim communities"],
+    ["Spanish", "Latino Muslim converts — fastest growing Muslim demographic in Americas"],
+    ["Chinese (Simplified)", "Hui Muslim minority and Chinese Muslim diaspora"],
+    ["Russian", "Central Asian and Russian Muslim communities"],
+  ]),
+
+  divider(),
+
+  // ── CLOSING ──
+  h1("10. Final Vision Statement"),
+  new Table({
+    width: { size: 9360, type: WidthType.DXA }, columnWidths: [9360],
+    rows: [new TableRow({ children: [new TableCell({
+      borders: { top: { style: BorderStyle.THICK, size: 12, color: GREEN_DARK },
+                 bottom: { style: BorderStyle.THICK, size: 12, color: GREEN_DARK },
+                 left: noBorder, right: noBorder },
+      shading: { fill: GREEN_LIGHT, type: ShadingType.CLEAR },
+      margins: { top: 280, bottom: 280, left: 360, right: 360 },
+      children: [
+        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 40, after: 80 },
+          children: [new TextRun({ text: "Our Vision", size: 36, bold: true, color: GREEN_DARK, font: "Arial" })] }),
+        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 80 },
+          children: [new TextRun({ text: "DEEN COMPLETE will be the most comprehensive, most trusted, and most beloved Islamic application in the world — serving 1.8 billion Muslims in their daily relationship with Allah, from the moment they wake up to the moment they sleep. One app. Complete Deen.", size: 24, color: GRAY_DARK, font: "Arial", italics: true })] }),
+        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 80, after: 40 },
+          children: [new TextRun({ text: "\"Indeed, the most noble of you in the sight of Allah is the most righteous of you.\"", size: 22, color: GREEN_MID, font: "Arial", italics: true })] }),
+        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 40 },
+          children: [new TextRun({ text: "— Quran 49:13", size: 20, color: GOLD, font: "Arial", bold: true })] }),
+      ]
+    })]})],
+  }),
+
+  new Paragraph({ spacing: { before: 360, after: 80 }, alignment: AlignmentType.CENTER,
+    children: [reg("DEEN COMPLETE — Full Product Documentation v1.0  |  April 2026", 20, GRAY_MID)] }),
+  new Paragraph({ spacing: { before: 0, after: 80 }, alignment: AlignmentType.CENTER,
+    children: [reg("This document is confidential and intended for development and investment review purposes only.", 18, GRAY_MID)] }),
+];
+
+// ─── Assemble Document ────────────────────────────────────────────
+const doc = new Document({
+  numbering: {
+    config: [
+      { reference: "bullets",
+        levels: [
+          { level: 0, format: LevelFormat.BULLET, text: "•", alignment: AlignmentType.LEFT,
+            style: { paragraph: { indent: { left: 720, hanging: 360 } } } },
+          { level: 1, format: LevelFormat.BULLET, text: "◦", alignment: AlignmentType.LEFT,
+            style: { paragraph: { indent: { left: 1080, hanging: 360 } } } },
+        ]},
+    ]
+  },
+  styles: {
+    default: { document: { run: { font: "Arial", size: 22 } } },
+    paragraphStyles: [
+      { id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true,
+        run: { size: 40, bold: true, font: "Arial", color: GREEN_DARK },
+        paragraph: { spacing: { before: 360, after: 180 }, outlineLevel: 0 } },
+      { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true,
+        run: { size: 32, bold: true, font: "Arial", color: GREEN_MID },
+        paragraph: { spacing: { before: 280, after: 140 }, outlineLevel: 1 } },
+      { id: "Heading3", name: "Heading 3", basedOn: "Normal", next: "Normal", quickFormat: true,
+        run: { size: 26, bold: true, font: "Arial", color: GOLD },
+        paragraph: { spacing: { before: 200, after: 100 }, outlineLevel: 2 } },
+    ]
+  },
+  sections: [{
+    properties: {
+      page: {
+        size: { width: 12240, height: 15840 },
+        margin: { top: 1440, right: 1260, bottom: 1440, left: 1260 }
+      }
+    },
+    headers: {
+      default: new Header({
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.RIGHT,
+            border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: GREEN_MID, space: 1 } },
+            spacing: { before: 0, after: 120 },
+            children: [
+              new TextRun({ text: "DEEN COMPLETE — All-in-One Islamic App", size: 18, color: GREEN_MID, font: "Arial", italics: true }),
+              new TextRun({ text: "    |    Page ", size: 18, color: GRAY_MID, font: "Arial" }),
+              new PageNumber(),
+            ]
+          })
+        ]
+      })
+    },
+    footers: {
+      default: new Footer({
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            border: { top: { style: BorderStyle.SINGLE, size: 4, color: GOLD, space: 1 } },
+            spacing: { before: 120, after: 0 },
+            children: [new TextRun({ text: "Confidential Product Documentation  |  v1.0  |  April 2026", size: 16, color: GRAY_MID, font: "Arial", italics: true })]
+          })
+        ]
+      })
+    },
+    children
+  }]
+});
+
+Packer.toBuffer(doc).then(buffer => {
+  fs.writeFileSync("/home/claude/DEEN_COMPLETE_Documentation.docx", buffer);
+  console.log("Document created successfully.");
+});

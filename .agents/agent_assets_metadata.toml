@@ -1,0 +1,14 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "XPDfw-FIiIw41cM7z8_4k"
+uri = "file://artifacts/deen-complete/assets/images/icon.png"
+type = "image"
+title = "deen complete app icon"
+
+[[generated]]
+id = "mAzE01MH4C1KQL0pl-eOM"
+uri = "file://artifacts/deen-complete/assets/images/splash.png"
+type = "image"
+title = "deen complete splash"
