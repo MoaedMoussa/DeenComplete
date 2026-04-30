@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
-import { calculatePrayerTimes, DEFAULT_PRAYER_TIMES, PrayerTimes } from "@/data/prayers";
+import { getPrayerTimes, DailyPrayerTimes, DEFAULT_PRAYER_TIMES } from "@/data/prayers";
+import { City, CITIES } from "@/data/cities";
 
-interface PrayerLog {
+export interface PrayerLog {
   date: string;
   fajr: "prayed" | "missed" | "late" | null;
   dhuhr: "prayed" | "missed" | "late" | null;
@@ -12,7 +13,7 @@ interface PrayerLog {
   isha: "prayed" | "missed" | "late" | null;
 }
 
-interface AppSettings {
+export interface AppSettings {
   calculationMethod: string;
   madhab: string;
   notifications: boolean;
@@ -23,11 +24,20 @@ interface AppSettings {
   arabicFontSize: number;
   showTransliteration: boolean;
   showTranslation: boolean;
+  translationEdition: string;
+}
+
+export interface LocationInfo {
+  lat: number;
+  lng: number;
+  city: string;
+  country: string;
+  isGPS: boolean;
 }
 
 interface AppContextValue {
-  prayerTimes: PrayerTimes;
-  location: { lat: number; lng: number; city: string } | null;
+  prayerTimes: DailyPrayerTimes;
+  location: LocationInfo | null;
   settings: AppSettings;
   prayerLogs: PrayerLog[];
   dhikrCounts: Record<string, number>;
@@ -40,10 +50,12 @@ interface AppContextValue {
   toggleBookmarkSurah: (id: number) => void;
   toggleBookmarkDua: (id: string) => void;
   requestLocation: () => Promise<void>;
+  setManualCity: (city: City) => void;
+  refreshPrayerTimes: () => void;
 }
 
 const defaultSettings: AppSettings = {
-  calculationMethod: "ISNA",
+  calculationMethod: "NorthAmerica",
   madhab: "Shafi",
   notifications: true,
   notificationsEnabled: true,
@@ -53,13 +65,14 @@ const defaultSettings: AppSettings = {
   arabicFontSize: 26,
   showTransliteration: true,
   showTranslation: true,
+  translationEdition: "en.sahih",
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [prayerTimes, setPrayerTimes] = useState<PrayerTimes>(DEFAULT_PRAYER_TIMES);
-  const [location, setLocation] = useState<{ lat: number; lng: number; city: string } | null>(null);
+  const [prayerTimes, setPrayerTimes] = useState<DailyPrayerTimes>(DEFAULT_PRAYER_TIMES);
+  const [location, setLocation] = useState<LocationInfo | null>(null);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [prayerLogs, setPrayerLogs] = useState<PrayerLog[]>([]);
   const [dhikrCounts, setDhikrCounts] = useState<Record<string, number>>({});
@@ -68,24 +81,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     loadStoredData();
-    requestLocation();
   }, []);
 
   async function loadStoredData() {
     try {
-      const [storedSettings, storedLogs, storedDhikr, storedSurahs, storedDuas] = await Promise.all([
-        AsyncStorage.getItem("settings"),
-        AsyncStorage.getItem("prayerLogs"),
-        AsyncStorage.getItem("dhikrCounts"),
-        AsyncStorage.getItem("bookmarkedSurahs"),
-        AsyncStorage.getItem("bookmarkedDuas"),
-      ]);
-      if (storedSettings) setSettings({ ...defaultSettings, ...JSON.parse(storedSettings) });
+      const [storedSettings, storedLogs, storedDhikr, storedSurahs, storedDuas, storedLocation] =
+        await Promise.all([
+          AsyncStorage.getItem("settings"),
+          AsyncStorage.getItem("prayerLogs"),
+          AsyncStorage.getItem("dhikrCounts"),
+          AsyncStorage.getItem("bookmarkedSurahs"),
+          AsyncStorage.getItem("bookmarkedDuas"),
+          AsyncStorage.getItem("savedLocation"),
+        ]);
+
+      const loadedSettings = storedSettings
+        ? { ...defaultSettings, ...JSON.parse(storedSettings) }
+        : defaultSettings;
+      if (storedSettings) setSettings(loadedSettings);
       if (storedLogs) setPrayerLogs(JSON.parse(storedLogs));
       if (storedDhikr) setDhikrCounts(JSON.parse(storedDhikr));
       if (storedSurahs) setBookmarkedSurahs(JSON.parse(storedSurahs));
       if (storedDuas) setBookmarkedDuas(JSON.parse(storedDuas));
-    } catch {}
+
+      if (storedLocation) {
+        const loc: LocationInfo = JSON.parse(storedLocation);
+        setLocation(loc);
+        setPrayerTimes(getPrayerTimes(loc.lat, loc.lng, new Date(), loadedSettings.calculationMethod, loadedSettings.madhab));
+      } else {
+        requestLocation();
+      }
+    } catch {
+      requestLocation();
+    }
   }
 
   async function requestLocation() {
@@ -93,47 +121,105 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (Platform.OS === "web") {
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, city: "Your Location" };
-              setLocation(loc);
-              setPrayerTimes(calculatePrayerTimes(loc.lat, loc.lng));
+            async (pos) => {
+              const loc: LocationInfo = {
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                city: "Current Location",
+                country: "",
+                isGPS: true,
+              };
+              // Try to find nearest city
+              const nearest = findNearestCity(pos.coords.latitude, pos.coords.longitude);
+              const finalLoc: LocationInfo = nearest
+                ? { lat: nearest.lat, lng: nearest.lng, city: nearest.name, country: nearest.country, isGPS: true }
+                : loc;
+              applyLocation(finalLoc);
             },
-            () => {
-              setDefaultLocation();
-            }
+            () => setMakkahDefault()
           );
         } else {
-          setDefaultLocation();
+          setMakkahDefault();
         }
         return;
       }
       const ExpoLocation = await import("expo-location");
       const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
       if (status === "granted") {
-        const pos = await ExpoLocation.getCurrentPositionAsync({});
-        const geocode = await ExpoLocation.reverseGeocodeAsync({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
-        const city = geocode[0]?.city || geocode[0]?.region || "Your Location";
-        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, city };
-        setLocation(loc);
-        setPrayerTimes(calculatePrayerTimes(loc.lat, loc.lng));
+        const pos = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy.Balanced });
+        const geocode = await ExpoLocation.reverseGeocodeAsync({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        });
+        const cityName = geocode[0]?.city || geocode[0]?.region || "Your Location";
+        const countryName = geocode[0]?.country || "";
+        const loc: LocationInfo = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          city: cityName,
+          country: countryName,
+          isGPS: true,
+        };
+        applyLocation(loc);
       } else {
-        setDefaultLocation();
+        setMakkahDefault();
       }
     } catch {
-      setDefaultLocation();
+      setMakkahDefault();
     }
   }
 
-  function setDefaultLocation() {
-    const loc = { lat: 21.3891, lng: 39.8579, city: "Makkah" };
+  function findNearestCity(lat: number, lng: number): City | null {
+    let nearest: City | null = null;
+    let minDist = Infinity;
+    for (const city of CITIES) {
+      const d = Math.sqrt((city.lat - lat) ** 2 + (city.lng - lng) ** 2);
+      if (d < minDist) { minDist = d; nearest = city; }
+    }
+    return minDist < 2 ? nearest : null;
+  }
+
+  function setMakkahDefault() {
+    const loc: LocationInfo = { lat: 21.3891, lng: 39.8579, city: "Makkah", country: "Saudi Arabia", isGPS: false };
+    applyLocation(loc);
+  }
+
+  function applyLocation(loc: LocationInfo) {
     setLocation(loc);
-    setPrayerTimes(calculatePrayerTimes(loc.lat, loc.lng));
+    AsyncStorage.setItem("savedLocation", JSON.stringify(loc));
+    const times = getPrayerTimes(loc.lat, loc.lng, new Date(), settings.calculationMethod, settings.madhab);
+    setPrayerTimes(times);
+  }
+
+  function setManualCity(city: City) {
+    const loc: LocationInfo = {
+      lat: city.lat,
+      lng: city.lng,
+      city: city.name,
+      country: city.country,
+      isGPS: false,
+    };
+    applyLocation(loc);
+  }
+
+  function refreshPrayerTimes() {
+    if (location) {
+      const times = getPrayerTimes(location.lat, location.lng, new Date(), settings.calculationMethod, settings.madhab);
+      setPrayerTimes(times);
+    }
   }
 
   function updateSettings(partial: Partial<AppSettings>) {
-    const updated = { ...settings, ...partial };
-    setSettings(updated);
-    AsyncStorage.setItem("settings", JSON.stringify(updated));
+    setSettings(prev => {
+      const updated = { ...prev, ...partial };
+      AsyncStorage.setItem("settings", JSON.stringify(updated));
+      // Recalculate prayer times if method/madhab changed
+      if ((partial.calculationMethod || partial.madhab) && location) {
+        const times = getPrayerTimes(location.lat, location.lng, new Date(), updated.calculationMethod, updated.madhab);
+        setPrayerTimes(times);
+      }
+      return updated;
+    });
   }
 
   function logPrayer(date: string, prayer: keyof Omit<PrayerLog, "date">, status: "prayed" | "missed" | "late") {
@@ -144,7 +230,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updated = prev.map(l => l.date === date ? { ...l, [prayer]: status } : l);
       } else {
         const newLog: PrayerLog = { date, fajr: null, dhuhr: null, asr: null, maghrib: null, isha: null, [prayer]: status };
-        updated = [newLog, ...prev.slice(0, 29)];
+        updated = [newLog, ...prev.slice(0, 59)];
       }
       AsyncStorage.setItem("prayerLogs", JSON.stringify(updated));
       return updated;
@@ -189,6 +275,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       bookmarkedSurahs, bookmarkedDuas,
       updateSettings, logPrayer, incrementDhikr, resetDhikr,
       toggleBookmarkSurah, toggleBookmarkDua, requestLocation,
+      setManualCity, refreshPrayerTimes,
     }}>
       {children}
     </AppContext.Provider>

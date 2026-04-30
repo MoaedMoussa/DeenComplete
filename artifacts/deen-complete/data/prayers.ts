@@ -1,174 +1,164 @@
-export interface PrayerTimes {
+import { Coordinates, CalculationMethod, PrayerTimes as AdhanPrayerTimes, Madhab, SunnahTimes } from "adhan";
+
+export interface PrayerTimeEntry {
+  name: string;
+  nameArabic: string;
+  key: string;
+  time: Date;
+}
+
+export interface DailyPrayerTimes {
   fajr: Date;
   sunrise: Date;
   dhuhr: Date;
   asr: Date;
   maghrib: Date;
   isha: Date;
+  midnight: Date;
+  lastThird: Date;
 }
 
-export interface Prayer {
-  name: string;
-  nameArabic: string;
-  time: Date;
-  key: keyof PrayerTimes;
+function getMethodParams(method: string) {
+  switch (method) {
+    case "MuslimWorldLeague": return CalculationMethod.MuslimWorldLeague();
+    case "Egyptian": return CalculationMethod.Egyptian();
+    case "UmmAlQura": return CalculationMethod.UmmAlQura();
+    case "Karachi": return CalculationMethod.Karachi();
+    case "Gulf": return CalculationMethod.Gulf();
+    case "MoonsightingCommittee": return CalculationMethod.MoonsightingCommittee();
+    case "Turkey": return CalculationMethod.Turkey();
+    case "Tehran": return CalculationMethod.Tehran();
+    case "Singapore": return CalculationMethod.Singapore();
+    case "NorthAmerica":
+    default: return CalculationMethod.NorthAmerica();
+  }
 }
 
-function toRad(deg: number): number {
-  return (deg * Math.PI) / 180;
-}
-function toDeg(rad: number): number {
-  return (rad * 180) / Math.PI;
-}
-function fixAngle(a: number): number {
-  return a - 360 * Math.floor(a / 360);
-}
-function fixHour(a: number): number {
-  return a - 24 * Math.floor(a / 24);
-}
+export function getPrayerTimes(
+  lat: number,
+  lng: number,
+  date: Date = new Date(),
+  method: string = "NorthAmerica",
+  madhab: string = "Shafi"
+): DailyPrayerTimes {
+  const coords = new Coordinates(lat, lng);
+  const params = getMethodParams(method);
+  params.madhab = madhab === "Hanafi" ? Madhab.Hanafi : Madhab.Shafi;
 
-function julianDate(year: number, month: number, day: number): number {
-  if (month <= 2) { year -= 1; month += 12; }
-  const A = Math.floor(year / 100);
-  const B = 2 - A + Math.floor(A / 4);
-  return Math.floor(365.25 * (year + 4716)) + Math.floor(30.6001 * (month + 1)) + day + B - 1524.5;
-}
+  const times = new AdhanPrayerTimes(coords, date, params);
+  const sunnah = new SunnahTimes(times);
 
-function sunPosition(jd: number): { declination: number; equation: number } {
-  const D = jd - 2451545.0;
-  const g = fixAngle(357.529 + 0.98560028 * D);
-  const q = fixAngle(280.459 + 0.98564736 * D);
-  const L = fixAngle(q + 1.915 * Math.sin(toRad(g)) + 0.020 * Math.sin(toRad(2 * g)));
-  const e = 23.439 - 0.00000036 * D;
-  const RA = toDeg(Math.atan2(Math.cos(toRad(e)) * Math.sin(toRad(L)), Math.cos(toRad(L)))) / 15;
-  const eqt = q / 15 - fixHour(RA);
-  const decl = toDeg(Math.asin(Math.sin(toRad(e)) * Math.sin(toRad(L))));
-  return { declination: decl, equation: eqt };
-}
-
-function computeTime(lat: number, lng: number, jd: number, angle: number, direction: number): number {
-  const { declination: D, equation: EqT } = sunPosition(jd);
-  const cosHour = -Math.sin(toRad(angle - direction)) / (Math.cos(toRad(lat)) * Math.cos(toRad(D)));
-  if (cosHour > 1) return 0;
-  if (cosHour < -1) return 12;
-  const H = toDeg(Math.acos(cosHour)) / 15;
-  return 12 - direction * H - lng / 15 - EqT;
-}
-
-function computeAsr(lat: number, lng: number, jd: number, shadowFactor: number): number {
-  const { declination: D, equation: EqT } = sunPosition(jd);
-  const A = Math.atan(1 / (shadowFactor + Math.tan(Math.abs(toRad(lat - D)))));
-  const cosHour = (Math.sin(A) - Math.sin(toRad(lat)) * Math.sin(toRad(D))) / (Math.cos(toRad(lat)) * Math.cos(toRad(D)));
-  if (cosHour > 1) return 0;
-  if (cosHour < -1) return 12;
-  const H = toDeg(Math.acos(cosHour)) / 15;
-  return 12 + H - lng / 15 - EqT;
-}
-
-function decimalToDate(base: Date, decimalHours: number): Date {
-  const d = new Date(base);
-  d.setHours(0, 0, 0, 0);
-  d.setTime(d.getTime() + decimalHours * 3600 * 1000);
-  return d;
-}
-
-export function calculatePrayerTimes(lat: number, lng: number, date: Date = new Date()): PrayerTimes {
-  const y = date.getFullYear();
-  const m = date.getMonth() + 1;
-  const d = date.getDate();
-  const timezone = -date.getTimezoneOffset() / 60;
-  const jd = julianDate(y, m, d) - lng / (15 * 24);
-
-  const fajrDec = computeTime(lat, lng, jd, 18, -1) + timezone;
-  const sunriseDec = computeTime(lat, lng, jd, 0.833, -1) + timezone;
-  const dhuhrDec = 12 - lng / 15 + timezone - sunPosition(jd).equation;
-  const asrDec = computeAsr(lat, lng, jd, 1) + timezone;
-  const maghribDec = computeTime(lat, lng, jd, 0.833, 1) + timezone;
-  const ishaDec = computeTime(lat, lng, jd, 17, 1) + timezone;
-
-  const base = new Date(y, m - 1, d);
   return {
-    fajr: decimalToDate(base, fajrDec),
-    sunrise: decimalToDate(base, sunriseDec),
-    dhuhr: decimalToDate(base, dhuhrDec),
-    asr: decimalToDate(base, asrDec),
-    maghrib: decimalToDate(base, maghribDec),
-    isha: decimalToDate(base, ishaDec),
+    fajr: times.fajr,
+    sunrise: times.sunrise,
+    dhuhr: times.dhuhr,
+    asr: times.asr,
+    maghrib: times.maghrib,
+    isha: times.isha,
+    midnight: sunnah.middleOfTheNight,
+    lastThird: sunnah.lastThirdOfTheNight,
   };
 }
 
-export const DEFAULT_PRAYER_TIMES: PrayerTimes = (() => {
-  const now = new Date();
-  const base = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return {
-    fajr: new Date(base.getTime() + 5 * 3600000),
-    sunrise: new Date(base.getTime() + 6.5 * 3600000),
-    dhuhr: new Date(base.getTime() + 12.5 * 3600000),
-    asr: new Date(base.getTime() + 16 * 3600000),
-    maghrib: new Date(base.getTime() + 19 * 3600000),
-    isha: new Date(base.getTime() + 20.5 * 3600000),
-  };
-})();
-
-export function getPrayers(times: PrayerTimes): Prayer[] {
+export function getAllPrayerEntries(times: DailyPrayerTimes): PrayerTimeEntry[] {
   return [
-    { name: "Fajr", nameArabic: "الفجر", time: times.fajr, key: "fajr" },
-    { name: "Sunrise", nameArabic: "الشروق", time: times.sunrise, key: "sunrise" },
-    { name: "Dhuhr", nameArabic: "الظهر", time: times.dhuhr, key: "dhuhr" },
-    { name: "Asr", nameArabic: "العصر", time: times.asr, key: "asr" },
-    { name: "Maghrib", nameArabic: "المغرب", time: times.maghrib, key: "maghrib" },
-    { name: "Isha", nameArabic: "العشاء", time: times.isha, key: "isha" },
+    { name: "Fajr", nameArabic: "الفجر", key: "fajr", time: times.fajr },
+    { name: "Sunrise", nameArabic: "الشروق", key: "sunrise", time: times.sunrise },
+    { name: "Dhuhr", nameArabic: "الظهر", key: "dhuhr", time: times.dhuhr },
+    { name: "Asr", nameArabic: "العصر", key: "asr", time: times.asr },
+    { name: "Maghrib", nameArabic: "المغرب", key: "maghrib", time: times.maghrib },
+    { name: "Isha", nameArabic: "العشاء", key: "isha", time: times.isha },
   ];
 }
 
-export function getNextPrayer(times: PrayerTimes): Prayer | null {
-  const prayers = getPrayers(times).filter(p => p.key !== "sunrise");
+export function getNextPrayerEntry(times: DailyPrayerTimes): PrayerTimeEntry | null {
   const now = new Date();
-  for (const prayer of prayers) {
-    if (prayer.time > now) return prayer;
-  }
-  return null;
+  const entries = getAllPrayerEntries(times).filter(e => e.key !== "sunrise");
+  return entries.find(e => e.time > now) ?? null;
 }
 
-export function formatPrayerTime(date: Date): string {
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+export function formatTime(date: Date): string {
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
-export function getTimeUntilPrayer(prayer: Prayer): string {
+export function formatCountdown(target: Date): string {
   const now = new Date();
-  const diff = prayer.time.getTime() - now.getTime();
+  const diff = target.getTime() - now.getTime();
   if (diff <= 0) return "Now";
   const h = Math.floor(diff / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
+  const s = Math.floor((diff % 60000) / 1000);
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
 }
 
-export function getHijriDate(date: Date = new Date()): { day: number; month: number; year: number; monthName: string } {
-  const hijriMonths = [
-    "Muharram", "Safar", "Rabi' al-Awwal", "Rabi' al-Thani",
-    "Jumada al-Awwal", "Jumada al-Thani", "Rajab", "Sha'ban",
-    "Ramadan", "Shawwal", "Dhu al-Qi'dah", "Dhu al-Hijjah",
-  ];
-  const jd = Math.floor(date.getTime() / 86400000) + 2440587.5;
-  const z = Math.floor(jd);
-  const a = Math.floor((z - 1867216.25) / 36524.25);
-  const alpha = z + 1 + a - Math.floor(a / 4);
-  const b = alpha + 1524;
-  const c = Math.floor((b - 122.1) / 365.25);
-  const d2 = Math.floor(365.25 * c);
-  const e = Math.floor((b - d2) / 30.6001);
-  const day2 = b - d2 - Math.floor(30.6001 * e);
-  const month2 = e < 14 ? e - 1 : e - 13;
-  const year2 = month2 > 2 ? c - 4716 : c - 4715;
-  const jdGreg = Math.floor(julianDate(year2, month2, day2)) + 0.5;
-  const l = jdGreg - 1948440 + 10632;
+export function getHijriDate(date: Date = new Date()): {
+  day: number; month: number; year: number; monthName: string; monthNameAr: string;
+} {
+  const jd = Math.floor(date.getTime() / 86400000 + 2440587.5);
+  let l = jd - 1948440 + 10632;
   const n = Math.floor((l - 1) / 10631);
-  const ll = l - 10631 * n + 354;
-  const j = (Math.floor((10985 - ll) / 5316)) * Math.floor((50 * ll) / 17719) + Math.floor(ll / 5670) * Math.floor((43 * ll) / 15238);
-  const ll2 = ll - (Math.floor((30 - j) / 15)) * Math.floor((17719 * j) / 50) - Math.floor(j / 16) * Math.floor((15238 * j) / 43) + 29;
-  const m3 = Math.floor((24 * ll2) / 709);
-  const d3 = ll2 - Math.floor((709 * m3) / 24);
-  const y3 = 30 * n + j - 30;
-  return { day: d3, month: m3, year: y3, monthName: hijriMonths[(m3 - 1) % 12] };
+  l = l - 10631 * n + 354;
+  const j = Math.floor((10985 - l) / 5316) * Math.floor((50 * l) / 17719) +
+    Math.floor(l / 5670) * Math.floor((43 * l) / 15238);
+  l = l - Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) -
+    Math.floor(j / 16) * Math.floor((15238 * j) / 43) + 29;
+  const month = Math.floor((24 * l) / 709);
+  const day = l - Math.floor((709 * month) / 24);
+  const year = 30 * n + j - 30;
+  const monthNames = [
+    "Muharram", "Safar", "Rabi' Al-Awwal", "Rabi' Al-Thani",
+    "Jumada Al-Awwal", "Jumada Al-Thani", "Rajab", "Sha'ban",
+    "Ramadan", "Shawwal", "Dhul Qi'dah", "Dhul Hijjah",
+  ];
+  const monthNamesAr = [
+    "مُحَرَّم", "صَفَر", "رَبِيع الأَوَّل", "رَبِيع الثَّانِي",
+    "جُمَادَى الأُولَى", "جُمَادَى الآخِرَة", "رَجَب", "شَعْبَان",
+    "رَمَضَان", "شَوَّال", "ذُو الْقَعْدَة", "ذُو الْحِجَّة",
+  ];
+  return { day, month, year, monthName: monthNames[month - 1] ?? "", monthNameAr: monthNamesAr[month - 1] ?? "" };
 }
+
+export function getQiblaDirection(lat: number, lng: number): number {
+  const KAABA_LAT = 21.4225;
+  const KAABA_LNG = 39.8262;
+  const latRad = (lat * Math.PI) / 180;
+  const kaabaLatRad = (KAABA_LAT * Math.PI) / 180;
+  const dLng = ((KAABA_LNG - lng) * Math.PI) / 180;
+  const y = Math.sin(dLng);
+  const x = Math.cos(latRad) * Math.tan(kaabaLatRad) - Math.sin(latRad) * Math.cos(dLng);
+  let bearing = Math.atan2(y, x) * (180 / Math.PI);
+  return (bearing + 360) % 360;
+}
+
+export function getDistanceToMakkah(lat: number, lng: number): number {
+  const R = 6371;
+  const KAABA_LAT = 21.4225;
+  const KAABA_LNG = 39.8262;
+  const dLat = ((KAABA_LAT - lat) * Math.PI) / 180;
+  const dLon = ((KAABA_LNG - lng) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat * Math.PI) / 180) * Math.cos((KAABA_LAT * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export const CALCULATION_METHODS = [
+  { id: "MuslimWorldLeague", name: "Muslim World League", region: "Global (Recommended)" },
+  { id: "NorthAmerica", name: "ISNA – North America", region: "USA / Canada" },
+  { id: "Egyptian", name: "Egyptian General Authority", region: "Egypt & Africa" },
+  { id: "UmmAlQura", name: "Umm Al-Qura University", region: "Saudi Arabia" },
+  { id: "Karachi", name: "Univ. of Islamic Sciences", region: "Pakistan & South Asia" },
+  { id: "Gulf", name: "Gulf Region", region: "UAE & Gulf States" },
+  { id: "MoonsightingCommittee", name: "Moonsighting Committee", region: "UK" },
+  { id: "Turkey", name: "Diyanet – Turkey", region: "Turkey" },
+  { id: "Tehran", name: "Tehran Institute", region: "Iran (Shia)" },
+  { id: "Singapore", name: "Majlis Ugama Islam", region: "Singapore & SE Asia" },
+];
+
+export type PrayerTimes = DailyPrayerTimes;
+
+export const DEFAULT_PRAYER_TIMES: DailyPrayerTimes = getPrayerTimes(21.4225, 39.8262);

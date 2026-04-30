@@ -8,16 +8,7 @@ import * as Haptics from "expo-haptics";
 
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/contexts/AppContext";
-
-const CALCULATION_METHODS = [
-  { id: "MWL", name: "Muslim World League", region: "Global" },
-  { id: "ISNA", name: "Islamic Society of N. America", region: "North America" },
-  { id: "Egypt", name: "Egyptian General Authority", region: "Egypt/Africa" },
-  { id: "Makkah", name: "Umm al-Qura University", region: "Saudi Arabia" },
-  { id: "Karachi", name: "University of Islamic Sciences", region: "Pakistan/S Asia" },
-  { id: "Tehran", name: "Institute of Geophysics", region: "Iran" },
-  { id: "Jafari", name: "Shia Ithna Ashari, Leva", region: "Shia" },
-];
+import { CALCULATION_METHODS } from "@/data/prayers";
 
 const MADHAB_OPTIONS = [
   { id: "Shafi", name: "Shafi / Maliki / Hanbali", desc: "Earlier Asr time" },
