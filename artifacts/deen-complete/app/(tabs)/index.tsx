@@ -17,6 +17,18 @@ import { getDailyVerse } from "@/data/quran";
 import { getDailyHadith } from "@/data/hadith";
 
 const PRAYER_KEYS = ["fajr", "dhuhr", "asr", "maghrib", "isha"] as const;
+const PRAYER_ICONS: Record<string, string> = { fajr: "🌙", dhuhr: "☀️", asr: "🌤️", maghrib: "🌅", isha: "🌙" };
+
+const QUICK_ACTIONS = [
+  { icon: "🧭", label: "Qibla", labelAr: "القبلة", route: "/qibla" },
+  { icon: "📿", label: "Dhikr", labelAr: "الذكر", route: "/(tabs)/dhikr" },
+  { icon: "🤲", label: "Duas", labelAr: "الدعاء", route: "/duas" },
+  { icon: "📖", label: "Hadith", labelAr: "الحديث", route: "/hadith" },
+  { icon: "✨", label: "99 Names", labelAr: "الأسماء", route: "/names" },
+  { icon: "💰", label: "Zakat", labelAr: "الزكاة", route: "/zakat" },
+  { icon: "🕋", label: "Hajj", labelAr: "الحج", route: "/hajj" },
+  { icon: "📅", label: "Calendar", labelAr: "التقويم", route: "/calendar" },
+];
 
 export default function HomeScreen() {
   const colors = useColors();
@@ -24,23 +36,19 @@ export default function HomeScreen() {
   const { prayerTimes, location, prayerLogs, refreshPrayerTimes } = useApp();
   const [now, setNow] = useState(new Date());
   const [refreshing, setRefreshing] = useState(false);
-  const [tick, setTick] = useState(0);
 
   const isWeb = Platform.OS === "web";
-  const topPad = isWeb ? 67 : insets.top;
-  const bottomPad = isWeb ? 34 : 0;
+  const topPad = isWeb ? 0 : insets.top;
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(new Date());
-      setTick(t => t + 1);
-    }, 15000);
-    return () => clearInterval(timer);
+    const t = setInterval(() => { setNow(new Date()); }, 20000);
+    return () => clearInterval(t);
   }, []);
 
+  const tz = location?.timezone;
   const allEntries = getAllPrayerEntries(prayerTimes);
   const displayPrayers = allEntries.filter(e => e.key !== "sunrise");
-  const nextPrayer = getNextPrayerEntry(prayerTimes);
+  const next = getNextPrayerEntry(prayerTimes);
   const hijri = getHijriDate(now);
   const verse = getDailyVerse();
   const hadith = getDailyHadith();
@@ -53,16 +61,11 @@ export default function HomeScreen() {
     setRefreshing(true);
     setNow(new Date());
     refreshPrayerTimes();
-    setTimeout(() => setRefreshing(false), 800);
+    setTimeout(() => setRefreshing(false), 700);
   }
 
-  const s = styles(colors, topPad, bottomPad);
-
-  const STATUS_COLOR: Record<string, string> = {
-    prayed: "#22C55E",
-    late: "#F59E0B",
-    missed: "#EF4444",
-  };
+  const s = styles(colors, topPad);
+  const STATUS_COLOR: Record<string, string> = { prayed: "#22C55E", late: "#F59E0B", missed: "#EF4444" };
 
   return (
     <ScrollView
@@ -75,313 +78,200 @@ export default function HomeScreen() {
       <View style={s.header}>
         <View style={{ flex: 1 }}>
           <Text style={s.bismillah}>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</Text>
-          <TouchableOpacity
-            style={s.locationRow}
-            onPress={() => router.push("/(tabs)/prayer")}
-            activeOpacity={0.7}
-          >
+          <Text style={s.greeting}>
+            {now.getHours() < 12 ? "Good Morning" : now.getHours() < 17 ? "Good Afternoon" : "Good Evening"} 🌿
+          </Text>
+          <TouchableOpacity style={s.locationRow} onPress={() => router.push("/(tabs)/prayer")} activeOpacity={0.7}>
             <Feather name="map-pin" size={12} color={colors.primary} />
-            <Text style={s.locationText}>{location?.city ?? "Detecting location..."}</Text>
+            <Text style={s.locationTxt}>{location?.city ?? "Detecting location..."}{location?.country ? `, ${location.country}` : ""}</Text>
           </TouchableOpacity>
         </View>
-        <View style={s.hijriBox}>
+        <TouchableOpacity style={s.hijriCard} onPress={() => router.push("/calendar")} activeOpacity={0.8}>
           <Text style={s.hijriDay}>{hijri.day}</Text>
-          <Text style={s.hijriMonth}>{hijri.monthName.split(" ")[0]}</Text>
-          <Text style={s.hijriYear}>{hijri.year} H</Text>
-        </View>
+          <Text style={s.hijriMonAr}>{hijri.monthNameAr.split(" ")[0]}</Text>
+          <Text style={s.hijriYear}>{hijri.year}H</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Next Prayer Card */}
-      {nextPrayer ? (
-        <TouchableOpacity style={s.prayerCard} onPress={() => router.push("/(tabs)/prayer")} activeOpacity={0.92}>
-          <View>
-            <Text style={s.nextLabel}>Next Prayer</Text>
-            <Text style={s.nextName}>{nextPrayer.name}</Text>
-            <Text style={s.nextNameAr}>{nextPrayer.nameArabic}</Text>
-          </View>
-          <View style={s.nextRight}>
-            <Text style={s.nextTime}>{formatTime(nextPrayer.time)}</Text>
-            <View style={s.countdownBadge}>
-              <Feather name="clock" size={12} color={colors.accent} />
-              <Text style={s.countdown}>{formatCountdown(nextPrayer.time)}</Text>
+      {/* Next Prayer Banner */}
+      <TouchableOpacity style={s.nextPrayerCard} onPress={() => router.push("/(tabs)/prayer")} activeOpacity={0.92}>
+        {next ? (
+          <>
+            <View style={s.nextLeft}>
+              <Text style={s.nextLabel}>Next Prayer</Text>
+              <View style={s.nextNameRow}>
+                <Text style={s.nextEmoji}>{PRAYER_ICONS[next.key]}</Text>
+                <Text style={s.nextName}>{next.name}</Text>
+              </View>
+              <Text style={s.nextAr}>{next.nameArabic}</Text>
             </View>
-          </View>
-        </TouchableOpacity>
-      ) : (
-        <View style={s.prayerCard}>
-          <Text style={s.nextLabel}>All prayers completed for today 🌙</Text>
-        </View>
-      )}
+            <View style={s.nextRight}>
+              <Text style={s.nextTime}>{formatTime(next.time, tz)}</Text>
+              <View style={s.nextBadge}>
+                <Feather name="clock" size={11} color={colors.accent} />
+                <Text style={s.nextCountdown}>{formatCountdown(next.time)}</Text>
+              </View>
+            </View>
+          </>
+        ) : (
+          <Text style={s.nextLabel}>All prayers completed today 🌙</Text>
+        )}
+      </TouchableOpacity>
 
-      {/* Prayer Pills Row */}
-      <View style={s.prayerPillsRow}>
+      {/* Prayer Pills */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.pillsScroll} contentContainerStyle={s.pillsContent}>
         {displayPrayers.map(p => {
-          const status = todayLog?.[p.key as keyof typeof todayLog] as string | null | undefined;
-          const isNext = nextPrayer?.key === p.key;
-          const isPast = p.time < now && !isNext;
+          const st = todayLog?.[p.key as keyof typeof todayLog] as string | null | undefined;
+          const isNext = next?.key === p.key;
           return (
             <TouchableOpacity
               key={p.key}
               style={[
-                s.prayerPill,
-                isNext && s.prayerPillActive,
-                status && { borderColor: STATUS_COLOR[status] + "60" },
+                s.pill,
+                isNext && { backgroundColor: colors.primary + "12", borderColor: colors.primary },
+                st && { borderColor: STATUS_COLOR[st] + "80" },
               ]}
               onPress={() => router.push("/(tabs)/prayer")}
               activeOpacity={0.8}
             >
-              <Text style={[s.pillName, isNext && s.pillNameActive, isPast && !status && s.pillPast]}>
-                {p.name}
-              </Text>
-              <Text style={[s.pillTime, isNext && s.pillTimeActive, isPast && !status && s.pillPast]}>
-                {formatTime(p.time)}
-              </Text>
-              {status && (
-                <View style={[s.pillDot, { backgroundColor: STATUS_COLOR[status] }]} />
-              )}
+              <Text style={s.pillEmoji}>{PRAYER_ICONS[p.key]}</Text>
+              <Text style={[s.pillName, isNext && { color: colors.primary }]}>{p.name}</Text>
+              <Text style={[s.pillTime, isNext && { color: colors.primary }]}>{formatTime(p.time, tz)}</Text>
+              {st && <View style={[s.pillDot, { backgroundColor: STATUS_COLOR[st] }]} />}
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
 
-      {/* Today's Prayer Progress */}
+      {/* Prayer Progress */}
       <TouchableOpacity style={s.progressCard} onPress={() => router.push("/prayer-tracker")} activeOpacity={0.85}>
-        <View style={s.progressTop}>
-          <Text style={s.progressTitle}>Today's Prayers</Text>
-          <Text style={s.progressCount}>{prayedCount}/5</Text>
+        <View style={s.progressRow}>
+          <Text style={s.progressLabel}>Today's Prayers</Text>
+          <Text style={s.progressCount}>{prayedCount} / 5</Text>
         </View>
-        <View style={s.progressBar}>
+        <View style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${(prayedCount / 5) * 100}%` as any }]} />
         </View>
-        <Text style={s.progressHint}>Tap to view full tracker →</Text>
+        <View style={s.progressDots}>
+          {PRAYER_KEYS.map(k => {
+            const st = todayLog?.[k];
+            return (
+              <View key={k} style={[
+                s.progressDot,
+                st === "prayed" && { backgroundColor: "#22C55E" },
+                st === "late" && { backgroundColor: "#F59E0B" },
+                st === "missed" && { backgroundColor: "#EF4444" },
+              ]} />
+            );
+          })}
+        </View>
       </TouchableOpacity>
 
       {/* Verse of the Day */}
       <View style={s.verseCard}>
-        <View style={s.cardTitleRow}>
-          <Feather name="book-open" size={14} color={colors.primary} />
-          <Text style={s.cardTitle}>Verse of the Day</Text>
+        <View style={s.cardTag}>
+          <Feather name="book-open" size={12} color={colors.primary} />
+          <Text style={s.cardTagTxt}>Verse of the Day</Text>
+          <Text style={s.cardTagRef}>Surah {verse.surahId}:{verse.verseNumber}</Text>
         </View>
         <Text style={s.verseArabic}>{verse.arabic}</Text>
         <Text style={s.verseTranslation}>{verse.translation}</Text>
-        <Text style={s.verseRef}>Surah {verse.surahId}: {verse.verseNumber}</Text>
-        <TouchableOpacity
-          style={s.readBtn}
-          onPress={() => router.push(`/quran/${verse.surahId}`)}
-        >
-          <Text style={s.readBtnText}>Read Full Surah</Text>
+        <TouchableOpacity style={s.readMoreBtn} onPress={() => router.push(`/quran/${verse.surahId}`)}>
+          <Text style={s.readMoreTxt}>Read Full Surah</Text>
           <Feather name="chevron-right" size={14} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
       {/* Hadith of the Day */}
       <View style={s.hadithCard}>
-        <View style={s.cardTitleRow}>
-          <Feather name="feather" size={14} color={colors.accent} />
-          <Text style={[s.cardTitle, { color: colors.accent }]}>Hadith of the Day</Text>
+        <View style={[s.cardTag, { backgroundColor: colors.goldLight }]}>
+          <Text style={s.cardTagTxt}>Hadith of the Day</Text>
+          <Text style={[s.cardTagRef, { color: colors.accent }]}>{hadith.collection}</Text>
         </View>
         {hadith.arabic && (
           <Text style={s.hadithArabic}>{hadith.arabic}</Text>
         )}
-        <Text style={s.hadithText}>"{hadith.text}"</Text>
+        <Text style={s.hadithTxt}>"{hadith.text}"</Text>
         <Text style={s.hadithNarrator}>— {hadith.narrator}</Text>
-        <Text style={s.hadithSource}>{hadith.collection}</Text>
       </View>
 
       {/* Quick Actions */}
-      <Text style={s.sectionTitle}>Quick Actions</Text>
-      <View style={s.actionsGrid}>
-        {[
-          { icon: "navigation", label: "Qibla", labelAr: "القبلة", route: "/qibla", bg: "#1A5C3A15" },
-          { icon: "refresh-cw", label: "Dhikr", labelAr: "الذكر", route: "/(tabs)/dhikr", bg: "#9C27B015" },
-          { icon: "heart", label: "Duas", labelAr: "الدعاء", route: "/duas", bg: "#E91E6315" },
-          { icon: "feather", label: "Hadith", labelAr: "الحديث", route: "/hadith", bg: "#3F51B515" },
-          { icon: "star", label: "99 Names", labelAr: "الأسماء", route: "/names", bg: "#FF572215" },
-          { icon: "dollar-sign", label: "Zakat", labelAr: "الزكاة", route: "/zakat", bg: "#4CAF5015" },
-          { icon: "map-pin", label: "Hajj", labelAr: "الحج", route: "/hajj", bg: "#79554815" },
-          { icon: "calendar", label: "Calendar", labelAr: "التقويم", route: "/calendar", bg: "#FF572215" },
-        ].map(item => (
+      <Text style={s.sectionTitle}>Explore</Text>
+      <View style={s.grid}>
+        {QUICK_ACTIONS.map(item => (
           <TouchableOpacity
             key={item.label}
-            style={[s.actionCard, { backgroundColor: item.bg }]}
+            style={s.gridCard}
             onPress={() => { Haptics.selectionAsync(); router.push(item.route as any); }}
             activeOpacity={0.8}
           >
-            <Feather name={item.icon as any} size={22} color={colors.primary} />
-            <Text style={s.actionLabel}>{item.label}</Text>
-            <Text style={s.actionLabelAr}>{item.labelAr}</Text>
+            <Text style={s.gridEmoji}>{item.icon}</Text>
+            <Text style={s.gridLabel}>{item.label}</Text>
+            <Text style={s.gridLabelAr}>{item.labelAr}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      <View style={{ height: 100 + bottomPad }} />
+      <View style={{ height: 120 }} />
     </ScrollView>
   );
 }
 
-const styles = (colors: ReturnType<typeof useColors>, topPad: number, bottomPad: number) =>
+const styles = (colors: ReturnType<typeof useColors>, topPad: number) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { paddingTop: topPad + 8, paddingHorizontal: 16 },
+    content: { paddingTop: topPad + 16, paddingHorizontal: 16 },
     header: { flexDirection: "row", alignItems: "flex-start", marginBottom: 16 },
     bismillah: { fontFamily: "Amiri_400Regular", fontSize: 18, color: colors.accent },
+    greeting: { fontFamily: "Inter_700Bold", fontSize: 20, color: colors.foreground, marginTop: 2 },
     locationRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
-    locationText: { fontFamily: "Inter_500Medium", fontSize: 13, color: colors.primary },
-    hijriBox: {
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: 10,
-      alignItems: "center",
-      minWidth: 70,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    hijriDay: { fontFamily: "Inter_700Bold", fontSize: 22, color: colors.primary },
-    hijriMonth: { fontFamily: "Inter_500Medium", fontSize: 10, color: colors.mutedForeground, textAlign: "center" },
-    hijriYear: { fontFamily: "Inter_400Regular", fontSize: 10, color: colors.mutedForeground },
-    prayerCard: {
-      backgroundColor: colors.primary,
-      borderRadius: 20,
-      padding: 20,
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 12,
-      shadowColor: colors.primary,
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.3,
-      shadowRadius: 14,
-      elevation: 8,
-    },
-    nextLabel: { fontFamily: "Inter_500Medium", fontSize: 12, color: "rgba(255,255,255,0.7)", marginBottom: 4 },
-    nextName: { fontFamily: "Inter_700Bold", fontSize: 26, color: "#fff" },
-    nextNameAr: { fontFamily: "Amiri_400Regular", fontSize: 18, color: "rgba(255,255,255,0.8)" },
+    locationTxt: { fontFamily: "Inter_500Medium", fontSize: 12, color: colors.primary },
+    hijriCard: { backgroundColor: colors.primary, borderRadius: 14, padding: 10, alignItems: "center", minWidth: 64, shadowColor: colors.primary, shadowOpacity: 0.3, shadowOffset: { width: 0, height: 4 }, shadowRadius: 8, elevation: 4 },
+    hijriDay: { fontFamily: "Inter_700Bold", fontSize: 24, color: "#fff" },
+    hijriMonAr: { fontFamily: "Amiri_400Regular", fontSize: 12, color: "rgba(255,255,255,0.8)", textAlign: "center" },
+    hijriYear: { fontFamily: "Inter_400Regular", fontSize: 10, color: "rgba(255,255,255,0.7)" },
+    nextPrayerCard: { backgroundColor: colors.primary, borderRadius: 20, padding: 20, flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10, shadowColor: colors.primary, shadowOpacity: 0.3, shadowOffset: { width: 0, height: 8 }, shadowRadius: 16, elevation: 8 },
+    nextLeft: {},
+    nextLabel: { fontFamily: "Inter_500Medium", fontSize: 12, color: "rgba(255,255,255,0.65)", marginBottom: 6 },
+    nextNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+    nextEmoji: { fontSize: 22 },
+    nextName: { fontFamily: "Inter_700Bold", fontSize: 28, color: "#fff" },
+    nextAr: { fontFamily: "Amiri_400Regular", fontSize: 18, color: "rgba(255,255,255,0.75)", marginTop: 2 },
     nextRight: { alignItems: "flex-end" },
-    nextTime: { fontFamily: "Inter_700Bold", fontSize: 30, color: "#fff" },
-    countdownBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-      backgroundColor: "rgba(0,0,0,0.2)",
-      borderRadius: 8,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      marginTop: 6,
-    },
-    countdown: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: colors.accent },
-    prayerPillsRow: { flexDirection: "row", gap: 6, marginBottom: 12 },
-    prayerPill: {
-      flex: 1,
-      backgroundColor: colors.card,
-      borderRadius: 10,
-      padding: 8,
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    prayerPillActive: { backgroundColor: colors.primary + "10", borderColor: colors.primary },
-    pillName: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: colors.mutedForeground },
-    pillNameActive: { color: colors.primary },
-    pillPast: { color: colors.border },
-    pillTime: { fontFamily: "Inter_700Bold", fontSize: 11, color: colors.foreground, marginTop: 3 },
-    pillTimeActive: { color: colors.primary },
-    pillDot: { width: 5, height: 5, borderRadius: 3, marginTop: 3 },
-    progressCard: {
-      backgroundColor: colors.card,
-      borderRadius: 14,
-      padding: 14,
-      marginBottom: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    progressTop: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
-    progressTitle: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: colors.foreground },
+    nextTime: { fontFamily: "Inter_700Bold", fontSize: 34, color: "#fff" },
+    nextBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(0,0,0,0.2)", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, marginTop: 6 },
+    nextCountdown: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: colors.accent },
+    pillsScroll: { marginBottom: 10 },
+    pillsContent: { paddingRight: 4, gap: 8 },
+    pill: { backgroundColor: colors.card, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, alignItems: "center", borderWidth: 1, borderColor: colors.border, minWidth: 76 },
+    pillEmoji: { fontSize: 16, marginBottom: 3 },
+    pillName: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: colors.mutedForeground },
+    pillTime: { fontFamily: "Inter_700Bold", fontSize: 12, color: colors.foreground, marginTop: 2 },
+    pillDot: { width: 5, height: 5, borderRadius: 3, marginTop: 4 },
+    progressCard: { backgroundColor: colors.card, borderRadius: 16, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: colors.border },
+    progressRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 10 },
+    progressLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: colors.foreground },
     progressCount: { fontFamily: "Inter_700Bold", fontSize: 14, color: colors.primary },
-    progressBar: {
-      height: 6,
-      backgroundColor: colors.muted,
-      borderRadius: 3,
-      overflow: "hidden",
-      marginBottom: 6,
-    },
+    progressTrack: { height: 6, backgroundColor: colors.muted, borderRadius: 3, overflow: "hidden", marginBottom: 8 },
     progressFill: { height: "100%", backgroundColor: colors.primary, borderRadius: 3 },
-    progressHint: { fontFamily: "Inter_400Regular", fontSize: 11, color: colors.mutedForeground },
-    verseCard: {
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      padding: 18,
-      marginBottom: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderLeftWidth: 4,
-      borderLeftColor: colors.primary,
-    },
-    cardTitleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 },
-    cardTitle: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: colors.primary },
-    verseArabic: {
-      fontFamily: "Amiri_400Regular",
-      fontSize: 22,
-      color: colors.primary,
-      textAlign: "right",
-      lineHeight: 38,
-      marginBottom: 8,
-    },
-    verseTranslation: {
-      fontFamily: "Inter_400Regular",
-      fontSize: 14,
-      color: colors.foreground,
-      lineHeight: 22,
-      fontStyle: "italic",
-      marginBottom: 8,
-    },
-    verseRef: { fontFamily: "Inter_500Medium", fontSize: 12, color: colors.accent, marginBottom: 8 },
-    readBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
-    readBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: colors.primary },
-    hadithCard: {
-      backgroundColor: colors.goldLight,
-      borderRadius: 16,
-      padding: 18,
-      marginBottom: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderLeftWidth: 4,
-      borderLeftColor: colors.accent,
-    },
-    hadithArabic: {
-      fontFamily: "Amiri_400Regular",
-      fontSize: 18,
-      color: "#7A5C2E",
-      textAlign: "right",
-      lineHeight: 32,
-      marginBottom: 8,
-    },
-    hadithText: {
-      fontFamily: "Inter_400Regular",
-      fontSize: 14,
-      color: colors.foreground,
-      lineHeight: 22,
-      fontStyle: "italic",
-      marginBottom: 8,
-    },
+    progressDots: { flexDirection: "row", gap: 6 },
+    progressDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.border },
+    verseCard: { backgroundColor: colors.card, borderRadius: 18, padding: 18, marginBottom: 12, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 4, borderLeftColor: colors.primary },
+    cardTag: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 14, backgroundColor: colors.primary + "10", alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+    cardTagTxt: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: colors.primary },
+    cardTagRef: { fontFamily: "Inter_400Regular", fontSize: 11, color: colors.mutedForeground },
+    verseArabic: { fontFamily: "Amiri_400Regular", fontSize: 24, color: colors.primary, textAlign: "right", lineHeight: 42, marginBottom: 10 },
+    verseTranslation: { fontFamily: "Inter_400Regular", fontSize: 14, color: colors.foreground, lineHeight: 22, fontStyle: "italic", marginBottom: 10 },
+    readMoreBtn: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start" },
+    readMoreTxt: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: colors.primary },
+    hadithCard: { backgroundColor: colors.goldLight, borderRadius: 18, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: colors.accent + "30", borderLeftWidth: 4, borderLeftColor: colors.accent },
+    hadithArabic: { fontFamily: "Amiri_400Regular", fontSize: 20, color: colors.accent, textAlign: "right", lineHeight: 36, marginBottom: 10 },
+    hadithTxt: { fontFamily: "Inter_400Regular", fontSize: 14, color: colors.foreground, lineHeight: 22, fontStyle: "italic", marginBottom: 8 },
     hadithNarrator: { fontFamily: "Inter_700Bold", fontSize: 13, color: colors.accent },
-    hadithSource: { fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground, marginTop: 2 },
-    sectionTitle: {
-      fontFamily: "Inter_700Bold",
-      fontSize: 18,
-      color: colors.foreground,
-      marginBottom: 12,
-    },
-    actionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-    actionCard: {
-      width: "22%",
-      flexGrow: 1,
-      borderRadius: 14,
-      padding: 12,
-      alignItems: "center",
-      gap: 6,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    actionLabel: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: colors.foreground, textAlign: "center" },
-    actionLabelAr: { fontFamily: "Amiri_400Regular", fontSize: 12, color: colors.accent, textAlign: "center" },
+    sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: colors.foreground, marginBottom: 12 },
+    grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    gridCard: { width: "22%", flexGrow: 1, backgroundColor: colors.card, borderRadius: 16, padding: 14, alignItems: "center", gap: 4, borderWidth: 1, borderColor: colors.border, minWidth: 76 },
+    gridEmoji: { fontSize: 24, marginBottom: 2 },
+    gridLabel: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: colors.foreground, textAlign: "center" },
+    gridLabelAr: { fontFamily: "Amiri_400Regular", fontSize: 12, color: colors.accent, textAlign: "center" },
   });

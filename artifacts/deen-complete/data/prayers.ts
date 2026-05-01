@@ -1,4 +1,7 @@
-import { Coordinates, CalculationMethod, PrayerTimes as AdhanPrayerTimes, Madhab, SunnahTimes } from "adhan";
+import {
+  Coordinates, CalculationMethod, PrayerTimes as AdhanPrayerTimes,
+  Madhab, SunnahTimes,
+} from "adhan";
 
 export interface PrayerTimeEntry {
   name: string;
@@ -38,16 +41,14 @@ export function getPrayerTimes(
   lat: number,
   lng: number,
   date: Date = new Date(),
-  method: string = "NorthAmerica",
-  madhab: string = "Shafi"
+  method = "NorthAmerica",
+  madhab = "Shafi",
 ): DailyPrayerTimes {
   const coords = new Coordinates(lat, lng);
   const params = getMethodParams(method);
   params.madhab = madhab === "Hanafi" ? Madhab.Hanafi : Madhab.Shafi;
-
   const times = new AdhanPrayerTimes(coords, date, params);
   const sunnah = new SunnahTimes(times);
-
   return {
     fajr: times.fajr,
     sunrise: times.sunrise,
@@ -77,17 +78,25 @@ export function getNextPrayerEntry(times: DailyPrayerTimes): PrayerTimeEntry | n
   return entries.find(e => e.time > now) ?? null;
 }
 
-export function formatTime(date: Date): string {
-  return date.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+/**
+ * Format a Date in the given IANA timezone (e.g. "Asia/Riyadh").
+ * Falls back to the device timezone when no timezone is supplied.
+ */
+export function formatTime(date: Date, timezone?: string): string {
+  try {
+    return date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+      ...(timezone ? { timeZone: timezone } : {}),
+    });
+  } catch {
+    return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  }
 }
 
 export function formatCountdown(target: Date): string {
-  const now = new Date();
-  const diff = target.getTime() - now.getTime();
+  const diff = target.getTime() - Date.now();
   if (diff <= 0) return "Now";
   const h = Math.floor(diff / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
@@ -121,7 +130,11 @@ export function getHijriDate(date: Date = new Date()): {
     "جُمَادَى الأُولَى", "جُمَادَى الآخِرَة", "رَجَب", "شَعْبَان",
     "رَمَضَان", "شَوَّال", "ذُو الْقَعْدَة", "ذُو الْحِجَّة",
   ];
-  return { day, month, year, monthName: monthNames[month - 1] ?? "", monthNameAr: monthNamesAr[month - 1] ?? "" };
+  return {
+    day, month, year,
+    monthName: monthNames[month - 1] ?? "",
+    monthNameAr: monthNamesAr[month - 1] ?? "",
+  };
 }
 
 export function getQiblaDirection(lat: number, lng: number): number {
@@ -132,8 +145,7 @@ export function getQiblaDirection(lat: number, lng: number): number {
   const dLng = ((KAABA_LNG - lng) * Math.PI) / 180;
   const y = Math.sin(dLng);
   const x = Math.cos(latRad) * Math.tan(kaabaLatRad) - Math.sin(latRad) * Math.cos(dLng);
-  let bearing = Math.atan2(y, x) * (180 / Math.PI);
-  return (bearing + 360) % 360;
+  return (Math.atan2(y, x) * (180 / Math.PI) + 360) % 360;
 }
 
 export function getDistanceToMakkah(lat: number, lng: number): number {
@@ -142,7 +154,8 @@ export function getDistanceToMakkah(lat: number, lng: number): number {
   const KAABA_LNG = 39.8262;
   const dLat = ((KAABA_LAT - lat) * Math.PI) / 180;
   const dLon = ((KAABA_LNG - lng) * Math.PI) / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat * Math.PI) / 180) * Math.cos((KAABA_LAT * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat * Math.PI) / 180) * Math.cos((KAABA_LAT * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -160,5 +173,4 @@ export const CALCULATION_METHODS = [
 ];
 
 export type PrayerTimes = DailyPrayerTimes;
-
 export const DEFAULT_PRAYER_TIMES: DailyPrayerTimes = getPrayerTimes(21.4225, 39.8262);

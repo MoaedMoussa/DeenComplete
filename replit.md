@@ -19,7 +19,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
   - Prayer Times: Calculated locally (pure JS algorithm), 5 daily prayers, prayer log tracker, Qibla compass
   - Dhikr/Tasbih: Counter with 33/100/1000 targets, dhikr sets (morning/evening), 99 Names counter
   - Duas: Categorized duas library with search and bookmarks
-  - Hadith: Multi-collection hadith library, daily hadith, search and filter by collection
+  - Hadith: Local embedded database (57 authentic hadiths from Bukhari, Muslim, Abu Dawud, Tirmidhi, Nawawi 40, Riyad as-Salihin); no external API required — browse by collection, full-text search, tap-to-expand detail modal with share
   - 99 Names of Allah: Full list with meanings, modal detail view, dhikr counter
   - Zakat Calculator: Cash, gold, silver, investments, debts — full nisab check and zakat due
   - Hajj & Umrah Guide: Step-by-step guides, tawaf/sa'i counters, key duas
@@ -31,6 +31,14 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 ### API Server
 - **Path**: `artifacts/api-server`
 - **Kind**: Express API server
+- **Proxy routes**: `/api/hadith/*` → sunnah.com (with API key); `/api/quran/*` → alquran.cloud
+- **Purpose**: Avoids CORS restrictions when calling Islamic APIs from the browser
+
+## Architecture Notes
+- **Hadith data**: Fully local (57 hadiths in `data/hadiths.ts`) — no external API dependency. sunnah.com key is invalid; proxy exists for future use.
+- **Quran data**: Live from alquran.cloud API (no key required, CORS-friendly). Responses cached in AsyncStorage.
+- **Prayer times**: Computed locally via `adhan` library using device GPS or manually selected city coordinates.
+- **Timezone**: `LocationInfo.timezone` (IANA string) drives all time formatting. Stored locations without timezone are backfilled via CITIES lookup.
 
 ## Stack
 

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  View, Text, FlatList, StyleSheet, TouchableOpacity, Platform, Share, ActivityIndicator,
+  View, Text, FlatList, StyleSheet, TouchableOpacity,
+  Platform, Share, ActivityIndicator, Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useLocalSearchParams, Stack } from "expo-router";
+import { useLocalSearchParams, Stack, router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
@@ -11,24 +12,6 @@ import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/contexts/AppContext";
 import { allSurahsList } from "@/data/quran";
-
-interface ApiVerse {
-  number: number;
-  text: string;
-  numberInSurah: number;
-  juz: number;
-  manzil: number;
-  page: number;
-  ruku: number;
-  hizbQuarter: number;
-  sajda: boolean;
-}
-
-interface ApiTranslation {
-  number: number;
-  text: string;
-  numberInSurah: number;
-}
 
 interface FetchedVerse {
   numberInSurah: number;
@@ -39,98 +22,84 @@ interface FetchedVerse {
   sajda: boolean;
 }
 
-const QURAN_API = "https://api.alquran.cloud/v1";
-const CACHE_PREFIX = "quran_surah_";
+const EDITIONS = [
+  { id: "en.sahih", label: "Sahih Intl." },
+  { id: "en.pickthall", label: "Pickthall" },
+  { id: "en.yusufali", label: "Yusuf Ali" },
+  { id: "en.asad", label: "M. Asad" },
+  { id: "ur.ahmedali", label: "اردو" },
+  { id: "bn.bengali", label: "বাংলা" },
+  { id: "id.indonesian", label: "Indonesia" },
+  { id: "tr.diyanet", label: "Türkçe" },
+  { id: "fr.hamidullah", label: "Français" },
+  { id: "de.aburida", label: "Deutsch" },
+];
 
 async function fetchSurahVerses(surahId: number, edition: string): Promise<FetchedVerse[]> {
-  const cacheKey = `${CACHE_PREFIX}${surahId}_${edition}`;
-
+  const key = `quran_v2_${surahId}_${edition}`;
   try {
-    const cached = await AsyncStorage.getItem(cacheKey);
-    if (cached) {
-      return JSON.parse(cached);
-    }
+    const c = await AsyncStorage.getItem(key);
+    if (c) return JSON.parse(c);
   } catch {}
 
-  const [arabicRes, transRes] = await Promise.all([
-    fetch(`${QURAN_API}/surah/${surahId}`),
-    fetch(`${QURAN_API}/surah/${surahId}/${edition}`),
+  const [arRes, trRes] = await Promise.all([
+    fetch(`https://api.alquran.cloud/v1/surah/${surahId}`),
+    fetch(`https://api.alquran.cloud/v1/surah/${surahId}/${edition}`),
   ]);
+  const [arData, trData] = await Promise.all([arRes.json(), trRes.json()]);
+  if (arData.code !== 200) throw new Error("Arabic fetch failed");
 
-  const [arabicData, transData] = await Promise.all([arabicRes.json(), transRes.json()]);
-
-  if (arabicData.code !== 200 || transData.code !== 200) {
-    throw new Error("API error");
-  }
-
-  const arabicVerses: ApiVerse[] = arabicData.data.ayahs;
-  const transVerses: ApiTranslation[] = transData.data.ayahs;
-
-  const verses: FetchedVerse[] = arabicVerses.map((av, i) => ({
+  const verses: FetchedVerse[] = arData.data.ayahs.map((av: any, i: number) => ({
     numberInSurah: av.numberInSurah,
     arabic: av.text,
-    translation: transVerses[i]?.text ?? "",
+    translation: trData.data?.ayahs?.[i]?.text ?? "",
     juz: av.juz,
     page: av.page,
-    sajda: av.sajda,
+    sajda: !!av.sajda,
   }));
 
-  try {
-    await AsyncStorage.setItem(cacheKey, JSON.stringify(verses));
-  } catch {}
-
+  try { await AsyncStorage.setItem(key, JSON.stringify(verses)); } catch {}
   return verses;
 }
 
-export default function SurahReaderScreen() {
+export default function SurahScreen() {
   const { surahId } = useLocalSearchParams<{ surahId: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { settings, bookmarkedSurahs, toggleBookmarkSurah } = useApp();
 
-  const [verses, setVerses] = useState<FetchedVerse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [fontSize, setFontSize] = useState(settings.arabicFontSize);
-  const [showTranslation, setShowTranslation] = useState(settings.showTranslation);
-  const [edition, setEdition] = useState(settings.translationEdition || "en.sahih");
-
   const id = parseInt(surahId ?? "1", 10);
   const surah = allSurahsList.find(s => s.id === id);
   const isBookmarked = bookmarkedSurahs.includes(id);
-  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const EDITIONS = [
-    { id: "en.sahih", label: "Sahih International" },
-    { id: "en.pickthall", label: "Pickthall" },
-    { id: "en.yusufali", label: "Yusuf Ali" },
-    { id: "en.asad", label: "Muhammad Asad" },
-    { id: "fr.hamidullah", label: "French (Hamidullah)" },
-    { id: "de.aburida", label: "German (Abu Rida)" },
-    { id: "es.cortes", label: "Spanish (Cortes)" },
-    { id: "tr.diyanet", label: "Turkish (Diyanet)" },
-    { id: "ur.ahmedali", label: "Urdu (Ahmed Ali)" },
-    { id: "bn.bengali", label: "Bengali" },
-    { id: "id.indonesian", label: "Indonesian" },
-    { id: "ms.basmeih", label: "Malay" },
-  ];
+  const [verses, setVerses] = useState<FetchedVerse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [edition, setEdition] = useState(settings.translationEdition || "en.sahih");
+  const [fontSize, setFontSize] = useState(settings.arabicFontSize);
+  const [showTranslation, setShowTranslation] = useState(settings.showTranslation);
+  const [showEditions, setShowEditions] = useState(false);
+  const [shareVerse, setShareVerse] = useState<FetchedVerse | null>(null);
 
-  const loadVerses = useCallback(async () => {
+  const isWeb = Platform.OS === "web";
+
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setVerses([]);
     try {
       const data = await fetchSurahVerses(id, edition);
       setVerses(data);
     } catch {
-      setError("Failed to load. Please check your connection and try again.");
+      setError("No internet connection. Please connect and try again.");
     } finally {
       setLoading(false);
     }
   }, [id, edition]);
 
-  useEffect(() => { loadVerses(); }, [loadVerses]);
+  useEffect(() => { load(); }, [load]);
 
-  async function shareVerse(v: FetchedVerse) {
+  async function doShare(v: FetchedVerse) {
     try {
       await Share.share({
         message: `${v.arabic}\n\n"${v.translation}"\n\n— Quran ${id}:${v.numberInSurah}`,
@@ -138,31 +107,53 @@ export default function SurahReaderScreen() {
     } catch {}
   }
 
-  const s = styles(colors, fontSize, bottomPad);
+  const s = styles(colors, fontSize);
 
-  function renderVerse({ item }: { item: FetchedVerse }) {
+  function renderVerse({ item, index }: { item: FetchedVerse; index: number }) {
+    const showPage = index === 0 || item.page !== verses[index - 1]?.page;
     return (
-      <View style={s.verseContainer}>
-        <View style={s.verseHeader}>
-          <View style={s.verseNumberBadge}>
-            <Text style={s.verseNumber}>{item.numberInSurah}</Text>
+      <View>
+        {/* Page marker */}
+        {showPage && (
+          <View style={s.pageMarker}>
+            <View style={s.pageLine} />
+            <Text style={s.pageTxt}>Page {item.page} · Juz {item.juz}</Text>
+            <View style={s.pageLine} />
           </View>
-          <View style={s.verseMeta}>
-            <Text style={s.verseJuz}>Juz {item.juz} • Page {item.page}</Text>
+        )}
+
+        <View style={s.verseWrap}>
+          {/* Arabic text — full width right-to-left */}
+          <Text style={s.arabicText}>{item.arabic} </Text>
+
+          {/* Verse number inline (Arabic style) */}
+          <View style={s.verseNumRow}>
+            <View style={s.verseNumBadge}>
+              <Text style={s.verseNumTxt}>{item.numberInSurah}</Text>
+            </View>
             {item.sajda && (
               <View style={s.sajdaBadge}>
-                <Text style={s.sajdaText}>Sajda</Text>
+                <Text style={s.sajdaTxt}>Sajda ﷲ</Text>
               </View>
             )}
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity
+              onPress={() => doShare(item)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={s.shareBtn}
+            >
+              <Feather name="share-2" size={13} color={colors.mutedForeground} />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={() => shareVerse(item)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Feather name="share-2" size={14} color={colors.mutedForeground} />
-          </TouchableOpacity>
+
+          {/* Translation */}
+          {showTranslation && item.translation ? (
+            <Text style={s.translationText}>{item.translation}</Text>
+          ) : null}
+
+          {/* Divider */}
+          <View style={s.verseDivider} />
         </View>
-        <Text style={s.arabicText}>{item.arabic}</Text>
-        {showTranslation && item.translation ? (
-          <Text style={s.translationText}>{item.translation}</Text>
-        ) : null}
       </View>
     );
   }
@@ -172,80 +163,69 @@ export default function SurahReaderScreen() {
       <Stack.Screen
         options={{
           title: surah?.name ?? `Surah ${id}`,
-          headerBackTitle: "Quran",
+          headerStyle: { backgroundColor: colors.background },
+          headerTitleStyle: { fontFamily: "Inter_700Bold", color: colors.foreground },
           headerRight: () => (
-            <TouchableOpacity onPress={() => { Haptics.selectionAsync(); toggleBookmarkSurah(id); }}>
-              <Feather
-                name="bookmark"
-                size={20}
-                color={isBookmarked ? colors.accent : colors.mutedForeground}
-              />
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", gap: 14, marginRight: 4 }}>
+              <TouchableOpacity onPress={() => { Haptics.selectionAsync(); toggleBookmarkSurah(id); }}>
+                <Feather name="bookmark" size={20} color={isBookmarked ? colors.accent : colors.mutedForeground} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowEditions(true)}>
+                <Feather name="globe" size={20} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
           ),
         }}
       />
 
-      {/* Controls */}
-      <View style={s.controls}>
+      {/* Toolbar */}
+      <View style={s.toolbar}>
         <TouchableOpacity
-          style={[s.controlBtn, showTranslation && s.controlBtnOn]}
+          style={[s.tbBtn, showTranslation && s.tbBtnOn]}
           onPress={() => setShowTranslation(v => !v)}
         >
-          <Text style={[s.controlText, showTranslation && s.controlTextOn]}>Translation</Text>
+          <Feather name="type" size={14} color={showTranslation ? "#fff" : colors.foreground} />
+          <Text style={[s.tbTxt, showTranslation && s.tbTxtOn]}>Translation</Text>
         </TouchableOpacity>
 
-        <View style={s.fontControls}>
+        <View style={s.fontRow}>
           <TouchableOpacity style={s.fontBtn} onPress={() => setFontSize(v => Math.max(16, v - 2))}>
-            <Feather name="minus" size={14} color={colors.foreground} />
+            <Text style={[s.fontBtnTxt, { fontSize: 14 }]}>A</Text>
           </TouchableOpacity>
-          <Text style={s.fontLabel}>Aa</Text>
-          <TouchableOpacity style={s.fontBtn} onPress={() => setFontSize(v => Math.min(42, v + 2))}>
-            <Feather name="plus" size={14} color={colors.foreground} />
+          <TouchableOpacity style={s.fontBtn} onPress={() => setFontSize(v => Math.min(44, v + 2))}>
+            <Text style={[s.fontBtnTxt, { fontSize: 20 }]}>A</Text>
           </TouchableOpacity>
         </View>
+
+        <Text style={s.editionLabel} numberOfLines={1}>
+          {EDITIONS.find(e => e.id === edition)?.label ?? "English"}
+        </Text>
       </View>
 
-      {/* Edition selector */}
-      <FlatList
-        horizontal
-        data={EDITIONS}
-        keyExtractor={e => e.id}
-        showsHorizontalScrollIndicator={false}
-        style={s.editionList}
-        contentContainerStyle={{ paddingHorizontal: 12, gap: 6 }}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[s.editionChip, edition === item.id && s.editionChipOn]}
-            onPress={() => setEdition(item.id)}
-          >
-            <Text style={[s.editionText, edition === item.id && s.editionTextOn]}>{item.label}</Text>
-          </TouchableOpacity>
-        )}
-      />
+      {/* Surah header — book style */}
+      {!loading && !error && (
+        <View style={s.surahCover}>
+          <Text style={s.surahCoverArabic}>{surah?.nameArabic}</Text>
+          <Text style={s.surahCoverName}>{surah?.name} — {surah?.nameTranslation}</Text>
+          <Text style={s.surahCoverMeta}>{surah?.revelationType} · {surah?.totalVerses} Verses · {verses[0]?.page ? `Pages ${verses[0].page}–${verses[verses.length - 1]?.page}` : ""}</Text>
+          {id !== 1 && id !== 9 && (
+            <Text style={s.bismillah}>بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ</Text>
+          )}
+        </View>
+      )}
 
-      {/* Surah Header */}
-      <View style={s.surahHeader}>
-        <Text style={s.surahName}>{surah?.name}</Text>
-        <Text style={s.surahArabic}>{surah?.nameArabic}</Text>
-        <Text style={s.surahMeta}>{surah?.nameTranslation} • {surah?.totalVerses} Verses • {surah?.revelationType}</Text>
-        {id !== 1 && id !== 9 && (
-          <Text style={s.bismillah}>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</Text>
-        )}
-      </View>
-
-      {/* Content */}
       {loading ? (
-        <View style={s.loadingContainer}>
+        <View style={s.loading}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={s.loadingText}>Loading {surah?.name}...</Text>
-          <Text style={s.loadingSubText}>Fetching {surah?.totalVerses} verses</Text>
+          <Text style={s.loadingTxt}>Loading {surah?.name ?? "Surah"}…</Text>
+          <Text style={s.loadingSub}>{surah?.totalVerses} verses · fetching from alquran.cloud</Text>
         </View>
       ) : error ? (
-        <View style={s.errorContainer}>
-          <Feather name="wifi-off" size={40} color={colors.mutedForeground} />
-          <Text style={s.errorText}>{error}</Text>
-          <TouchableOpacity style={s.retryBtn} onPress={loadVerses}>
-            <Text style={s.retryText}>Retry</Text>
+        <View style={s.errorWrap}>
+          <Feather name="wifi-off" size={48} color={colors.border} />
+          <Text style={s.errorTxt}>{error}</Text>
+          <TouchableOpacity style={s.retryBtn} onPress={load}>
+            <Text style={s.retryTxt}>Retry</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -253,100 +233,107 @@ export default function SurahReaderScreen() {
           data={verses}
           keyExtractor={v => String(v.numberInSurah)}
           renderItem={renderVerse}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 60 + bottomPad }}
+          contentContainerStyle={s.verseList}
           showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={s.verseDivider} />}
-          initialNumToRender={20}
-          maxToRenderPerBatch={30}
-          windowSize={10}
+          initialNumToRender={15}
+          maxToRenderPerBatch={25}
+          windowSize={8}
+          ListFooterComponent={
+            <View style={s.surahEnd}>
+              <Text style={s.surahEndTxt}>— End of {surah?.name} —</Text>
+              <View style={s.navBtns}>
+                {id > 1 && (
+                  <TouchableOpacity style={s.navBtn} onPress={() => router.replace(`/quran/${id - 1}`)}>
+                    <Feather name="chevron-left" size={16} color={colors.primary} />
+                    <Text style={s.navBtnTxt}>{allSurahsList[id - 2]?.name}</Text>
+                  </TouchableOpacity>
+                )}
+                {id < 114 && (
+                  <TouchableOpacity style={[s.navBtn, s.navBtnRight]} onPress={() => router.replace(`/quran/${id + 1}`)}>
+                    <Text style={s.navBtnTxt}>{allSurahsList[id]?.name}</Text>
+                    <Feather name="chevron-right" size={16} color={colors.primary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          }
         />
       )}
+
+      {/* Edition Modal */}
+      <Modal visible={showEditions} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowEditions(false)}>
+        <View style={s.modal}>
+          <View style={s.modalHdr}>
+            <Text style={s.modalTitle}>Translation</Text>
+            <TouchableOpacity onPress={() => setShowEditions(false)}>
+              <Feather name="x" size={22} color={colors.foreground} />
+            </TouchableOpacity>
+          </View>
+          {EDITIONS.map(e => (
+            <TouchableOpacity
+              key={e.id}
+              style={s.edRow}
+              onPress={() => { setEdition(e.id); setShowEditions(false); }}
+            >
+              <Text style={[s.edName, edition === e.id && { color: colors.primary }]}>{e.label}</Text>
+              <Text style={s.edId}>{e.id}</Text>
+              {edition === e.id && <Feather name="check" size={18} color={colors.primary} />}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Modal>
     </View>
   );
 }
 
-const styles = (colors: ReturnType<typeof useColors>, fontSize: number, bottomPad: number) =>
+const styles = (colors: ReturnType<typeof useColors>, fontSize: number) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    controls: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      backgroundColor: colors.card,
-      gap: 8,
-    },
-    controlBtn: {
-      paddingHorizontal: 12, paddingVertical: 6,
-      borderRadius: 8, backgroundColor: colors.muted,
-    },
-    controlBtnOn: { backgroundColor: colors.primary },
-    controlText: { fontFamily: "Inter_500Medium", fontSize: 13, color: colors.mutedForeground },
-    controlTextOn: { color: "#fff" },
-    fontControls: { flexDirection: "row", alignItems: "center", marginLeft: "auto", gap: 6 },
-    fontBtn: {
-      width: 28, height: 28, borderRadius: 14,
-      backgroundColor: colors.muted, justifyContent: "center", alignItems: "center",
-    },
-    fontLabel: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: colors.foreground },
-    editionList: { maxHeight: 42, borderBottomWidth: 1, borderBottomColor: colors.border },
-    editionChip: {
-      paddingHorizontal: 10, paddingVertical: 6,
-      borderRadius: 8, backgroundColor: colors.muted,
-      alignSelf: "center",
-    },
-    editionChipOn: { backgroundColor: colors.primary + "20", borderWidth: 1, borderColor: colors.primary },
-    editionText: { fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground },
-    editionTextOn: { color: colors.primary, fontFamily: "Inter_600SemiBold" },
-    surahHeader: {
-      alignItems: "center",
-      paddingVertical: 20,
-      paddingHorizontal: 16,
-      backgroundColor: colors.primary + "08",
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    surahName: { fontFamily: "Inter_700Bold", fontSize: 20, color: colors.primary },
-    surahArabic: { fontFamily: "Amiri_700Bold", fontSize: 28, color: colors.primary, marginTop: 4 },
-    surahMeta: { fontFamily: "Inter_400Regular", fontSize: 13, color: colors.mutedForeground, marginTop: 4 },
-    bismillah: { fontFamily: "Amiri_400Regular", fontSize: 20, color: colors.accent, marginTop: 12, textAlign: "center" },
-    loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
-    loadingText: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: colors.foreground },
-    loadingSubText: { fontFamily: "Inter_400Regular", fontSize: 13, color: colors.mutedForeground },
-    errorContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12, padding: 32 },
-    errorText: { fontFamily: "Inter_400Regular", fontSize: 14, color: colors.mutedForeground, textAlign: "center" },
-    retryBtn: { backgroundColor: colors.primary, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
-    retryText: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
-    verseContainer: { paddingVertical: 16 },
-    verseHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
-    verseNumberBadge: {
-      width: 32, height: 32, borderRadius: 16,
-      backgroundColor: colors.primary + "15", justifyContent: "center", alignItems: "center",
-    },
-    verseNumber: { fontFamily: "Inter_700Bold", fontSize: 13, color: colors.primary },
-    verseMeta: { flex: 1, flexDirection: "row", alignItems: "center", gap: 6 },
-    verseJuz: { fontFamily: "Inter_400Regular", fontSize: 11, color: colors.mutedForeground },
-    sajdaBadge: {
-      backgroundColor: colors.primary + "20", borderRadius: 4,
-      paddingHorizontal: 6, paddingVertical: 2,
-    },
-    sajdaText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: colors.primary },
-    arabicText: {
-      fontFamily: "Amiri_400Regular",
-      fontSize: fontSize,
-      color: colors.foreground,
-      textAlign: "right",
-      lineHeight: fontSize * 1.9,
-      marginBottom: 10,
-    },
-    translationText: {
-      fontFamily: "Inter_400Regular",
-      fontSize: 14,
-      color: colors.foreground,
-      lineHeight: 22,
-      fontStyle: "italic",
-    },
-    verseDivider: { height: 1, backgroundColor: colors.border },
+    toolbar: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card },
+    tbBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.muted },
+    tbBtnOn: { backgroundColor: colors.primary },
+    tbTxt: { fontFamily: "Inter_500Medium", fontSize: 12, color: colors.foreground },
+    tbTxtOn: { color: "#fff" },
+    fontRow: { flexDirection: "row", gap: 2, marginLeft: "auto" as any },
+    fontBtn: { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: colors.muted, borderRadius: 6 },
+    fontBtnTxt: { fontFamily: "Inter_700Bold", color: colors.foreground },
+    editionLabel: { fontFamily: "Inter_500Medium", fontSize: 12, color: colors.primary, maxWidth: 80 },
+    surahCover: { backgroundColor: colors.primary, padding: 24, alignItems: "center" },
+    surahCoverArabic: { fontFamily: "Amiri_700Bold", fontSize: 36, color: "#fff", textAlign: "center" },
+    surahCoverName: { fontFamily: "Inter_700Bold", fontSize: 16, color: "rgba(255,255,255,0.9)", marginTop: 6 },
+    surahCoverMeta: { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.65)", marginTop: 4 },
+    bismillah: { fontFamily: "Amiri_400Regular", fontSize: 22, color: colors.accent, marginTop: 14, textAlign: "center" },
+    verseList: { paddingHorizontal: 18, paddingBottom: 60 },
+    pageMarker: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 14 },
+    pageLine: { flex: 1, height: 1, backgroundColor: colors.border },
+    pageTxt: { fontFamily: "Inter_500Medium", fontSize: 11, color: colors.mutedForeground },
+    verseWrap: { paddingVertical: 4 },
+    arabicText: { fontFamily: "Amiri_400Regular", fontSize: fontSize, color: colors.foreground, textAlign: "right", lineHeight: fontSize * 1.95, writingDirection: "rtl" },
+    verseNumRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, marginBottom: 8 },
+    verseNumBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary + "15", justifyContent: "center", alignItems: "center" },
+    verseNumTxt: { fontFamily: "Inter_700Bold", fontSize: 12, color: colors.primary },
+    sajdaBadge: { backgroundColor: colors.accent + "20", borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2 },
+    sajdaTxt: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: colors.accent },
+    shareBtn: { padding: 4 },
+    translationText: { fontFamily: "Inter_400Regular", fontSize: 14, color: colors.mutedForeground, lineHeight: 22, marginBottom: 10 },
+    verseDivider: { height: 1, backgroundColor: colors.border, marginBottom: 4 },
+    loading: { flex: 1, justifyContent: "center", alignItems: "center", gap: 14 },
+    loadingTxt: { fontFamily: "Inter_700Bold", fontSize: 16, color: colors.foreground },
+    loadingSub: { fontFamily: "Inter_400Regular", fontSize: 13, color: colors.mutedForeground },
+    errorWrap: { flex: 1, justifyContent: "center", alignItems: "center", gap: 14, padding: 32 },
+    errorTxt: { fontFamily: "Inter_400Regular", fontSize: 14, color: colors.mutedForeground, textAlign: "center" },
+    retryBtn: { backgroundColor: colors.primary, borderRadius: 14, paddingHorizontal: 28, paddingVertical: 13 },
+    retryTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
+    surahEnd: { paddingVertical: 32, alignItems: "center", gap: 16 },
+    surahEndTxt: { fontFamily: "Amiri_400Regular", fontSize: 18, color: colors.mutedForeground },
+    navBtns: { flexDirection: "row", gap: 12, width: "100%" },
+    navBtn: { flex: 1, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.card, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border },
+    navBtnRight: { justifyContent: "flex-end" },
+    navBtnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: colors.primary },
+    modal: { flex: 1, backgroundColor: colors.background },
+    modalHdr: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingTop: 28, borderBottomWidth: 1, borderBottomColor: colors.border },
+    modalTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: colors.foreground },
+    edRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 10 },
+    edName: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: colors.foreground, flex: 1 },
+    edId: { fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground },
   });
