@@ -247,6 +247,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     fetchAndSetPrayerTimes(loc);
   }
 
+  // Use Nominatim (OpenStreetMap) to get a district-level display name.
+  // Returns e.g. "Khalifa City, Abu Dhabi" or "Downtown, Dubai".
+  async function nominatimReverseGeocode(
+    lat: number,
+    lng: number,
+  ): Promise<{ displayName: string; country: string } | null> {
+    try {
+      const url =
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=en`;
+      const res = await fetch(url, {
+        headers: { "User-Agent": "DeenComplete/1.0" },
+        signal: AbortSignal.timeout(7000),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const addr = data?.address ?? {};
+      // Prefer the most specific district-level label available
+      const district =
+        addr.suburb || addr.neighbourhood || addr.quarter ||
+        addr.residential || addr.district || addr.county || null;
+      const city =
+        addr.city || addr.town || addr.village || addr.state_district || addr.state || "";
+      const country = addr.country || "";
+      const displayName =
+        district && district !== city
+          ? `${district}, ${city}`
+          : city || data.display_name?.split(",")[0] || "Current Location";
+      return { displayName, country };
+    } catch {
+      return null;
+    }
+  }
+
   async function requestLocation(): Promise<void> {
     setLocationLoading(true);
 
@@ -254,13 +287,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (typeof navigator !== "undefined" && navigator.geolocation) {
         return new Promise<void>(resolve => {
           navigator.geolocation.getCurrentPosition(
-            pos => {
-              const tz = getDeviceTimezone();
-              const nearest = findNearestCity(pos.coords.latitude, pos.coords.longitude);
-              const loc: LocationInfo = nearest
-                ? { lat: nearest.lat, lng: nearest.lng, city: nearest.name, country: nearest.country, timezone: nearest.timezone, isGPS: true }
-                : { lat: pos.coords.latitude, lng: pos.coords.longitude, city: "Current Location", country: "", timezone: tz, isGPS: true };
-              applyLocation(loc);
+            async pos => {
+              const exactLat = pos.coords.latitude;
+              const exactLng = pos.coords.longitude;
+              // Use nearest city ONLY for timezone lookup
+              const nearest = findNearestCity(exactLat, exactLng);
+              const tz = nearest?.timezone ?? getDeviceTimezone();
+              // Try to get district-level name from Nominatim
+              const geo = await nominatimReverseGeocode(exactLat, exactLng);
+              applyLocation({
+                lat: exactLat,
+                lng: exactLng,
+                city: geo?.displayName ?? nearest?.name ?? "Current Location",
+                country: geo?.country ?? nearest?.country ?? "",
+                timezone: tz,
+                isGPS: true,
+              });
               resolve();
             },
             async () => {
@@ -282,22 +324,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const ExpoLocation = await import("expo-location");
       const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
       if (status === "granted") {
-        const pos = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy.Balanced });
-        const nearest = findNearestCity(pos.coords.latitude, pos.coords.longitude);
-        if (nearest) {
-          applyLocation({ lat: nearest.lat, lng: nearest.lng, city: nearest.name, country: nearest.country, timezone: nearest.timezone, isGPS: true });
-          return;
+        const pos = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy.High });
+        const exactLat = pos.coords.latitude;
+        const exactLng = pos.coords.longitude;
+
+        // Use nearest city ONLY for timezone — never snap coordinates or display name to city center
+        const nearest = findNearestCity(exactLat, exactLng);
+        const tz = nearest?.timezone ?? getDeviceTimezone();
+
+        // Prefer Expo reverse geocode (works offline) for district-level name
+        let displayName = nearest?.name ?? "Current Location";
+        let country = nearest?.country ?? "";
+        try {
+          const geocode = await ExpoLocation.reverseGeocodeAsync({
+            latitude: exactLat,
+            longitude: exactLng,
+          });
+          const g = geocode[0];
+          if (g) {
+            // district > subregion > name as the neighborhood identifier
+            const district = g.district || g.subregion || g.name || null;
+            const cityName = g.city || g.region || "";
+            displayName =
+              district && district !== cityName
+                ? `${district}, ${cityName}`
+                : cityName || displayName;
+            country = g.country || country;
+          }
+        } catch {
+          // Expo geocode failed — try Nominatim as fallback
+          const geo = await nominatimReverseGeocode(exactLat, exactLng);
+          if (geo) { displayName = geo.displayName; country = geo.country; }
         }
-        const geocode = await ExpoLocation.reverseGeocodeAsync({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
-        const tz = getDeviceTimezone();
-        applyLocation({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          city: geocode[0]?.city || geocode[0]?.region || "Your Location",
-          country: geocode[0]?.country || "",
-          timezone: tz,
-          isGPS: true,
-        });
+
+        applyLocation({ lat: exactLat, lng: exactLng, city: displayName, country, timezone: tz, isGPS: true });
       } else {
         const ok = await guessFromIP();
         if (!ok) guessFromTimezone();

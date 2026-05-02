@@ -29,6 +29,9 @@ const ALADHAN_METHOD: Record<string, number> = {
   UmmAlQura: 4,
   Karachi: 1,
   Gulf: 8,
+  Dubai: 8,       // UAE / Gulf Region — Fajr 18.2°, Isha 18.2°
+  Kuwait: 3,
+  Qatar: 10,
   MoonsightingCommittee: 15,
   Turkey: 13,
   Tehran: 7,
@@ -190,16 +193,19 @@ export async function fetchQiblaFromAladhan(lat: number, lng: number): Promise<n
 function getMethodParams(method: string) {
   switch (method) {
     case "MuslimWorldLeague": return CalculationMethod.MuslimWorldLeague();
-    case "Egyptian": return CalculationMethod.Egyptian();
-    case "UmmAlQura": return CalculationMethod.UmmAlQura();
-    case "Karachi": return CalculationMethod.Karachi();
-    case "Gulf": return CalculationMethod.UmmAlQura();
+    case "Egyptian":          return CalculationMethod.Egyptian();
+    case "UmmAlQura":         return CalculationMethod.UmmAlQura();
+    case "Karachi":           return CalculationMethod.Karachi();
+    case "Gulf":              return CalculationMethod.Dubai();   // Gulf uses Dubai angles
+    case "Dubai":             return CalculationMethod.Dubai();   // UAE / Gulf Region
+    case "Kuwait":            return CalculationMethod.Kuwait();
+    case "Qatar":             return CalculationMethod.Qatar();
     case "MoonsightingCommittee": return CalculationMethod.MoonsightingCommittee();
-    case "Turkey": return CalculationMethod.Turkey();
-    case "Tehran": return CalculationMethod.Tehran();
-    case "Singapore": return CalculationMethod.Singapore();
+    case "Turkey":            return CalculationMethod.Turkey();
+    case "Tehran":            return CalculationMethod.Tehran();
+    case "Singapore":         return CalculationMethod.Singapore();
     case "NorthAmerica":
-    default: return CalculationMethod.NorthAmerica();
+    default:                  return CalculationMethod.NorthAmerica();
   }
 }
 
@@ -322,16 +328,19 @@ export function getDistanceToMakkah(lat: number, lng: number): number {
 }
 
 export const CALCULATION_METHODS = [
-  { id: "MuslimWorldLeague", name: "Muslim World League", region: "Global (Recommended)" },
-  { id: "NorthAmerica", name: "ISNA – North America", region: "USA / Canada" },
-  { id: "Egyptian", name: "Egyptian General Authority", region: "Egypt & Africa" },
-  { id: "UmmAlQura", name: "Umm Al-Qura University", region: "Saudi Arabia" },
-  { id: "Karachi", name: "Univ. of Islamic Sciences", region: "Pakistan & South Asia" },
-  { id: "Gulf", name: "Gulf Region", region: "UAE & Gulf States" },
+  { id: "Dubai",              name: "UAE / Dubai Authority",     region: "UAE, Abu Dhabi, Dubai (Recommended)" },
+  { id: "MuslimWorldLeague",  name: "Muslim World League",       region: "Global" },
+  { id: "NorthAmerica",       name: "ISNA – North America",      region: "USA / Canada" },
+  { id: "Egyptian",           name: "Egyptian General Authority", region: "Egypt & Africa" },
+  { id: "UmmAlQura",          name: "Umm Al-Qura University",    region: "Saudi Arabia" },
+  { id: "Karachi",            name: "Univ. of Islamic Sciences", region: "Pakistan & South Asia" },
+  { id: "Kuwait",             name: "Kuwait",                    region: "Kuwait" },
+  { id: "Qatar",              name: "Qatar",                     region: "Qatar" },
+  { id: "Gulf",               name: "Gulf Region",               region: "Bahrain, Oman" },
   { id: "MoonsightingCommittee", name: "Moonsighting Committee", region: "UK" },
-  { id: "Turkey", name: "Diyanet – Turkey", region: "Turkey" },
-  { id: "Tehran", name: "Tehran Institute", region: "Iran (Shia)" },
-  { id: "Singapore", name: "Majlis Ugama Islam", region: "Singapore & SE Asia" },
+  { id: "Turkey",             name: "Diyanet – Turkey",          region: "Turkey" },
+  { id: "Tehran",             name: "Tehran Institute",          region: "Iran (Shia)" },
+  { id: "Singapore",          name: "Majlis Ugama Islam",        region: "Singapore & SE Asia" },
 ];
 
 export type PrayerTimes = DailyPrayerTimes;
