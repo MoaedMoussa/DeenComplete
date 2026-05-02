@@ -114,12 +114,12 @@ export default function NamesScreen() {
                 {selected.description && (
                   <Text style={s.modalDesc}>{selected.description}</Text>
                 )}
-                {selected.quranRef && (
+                {selected.description ? (
                   <View style={s.modalRef}>
-                    <Feather name="book-open" size={14} color={colors.accent} />
-                    <Text style={s.modalRefText}>Quran {selected.quranRef}</Text>
+                    <Feather name="info" size={14} color={colors.accent} />
+                    <Text style={s.modalRefText}>{selected.description}</Text>
                   </View>
-                )}
+                ) : null}
                 <TouchableOpacity
                   style={s.modalCountBtn}
                   onPress={() => {

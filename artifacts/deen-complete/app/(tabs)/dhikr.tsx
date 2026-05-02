@@ -1,424 +1,317 @@
 import React, { useState } from "react";
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform, Vibration,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/contexts/AppContext";
-import { dhikrSets, quickDhikr, DhikrItem } from "@/data/dhikr";
+import { dhikrSets, quickDhikr } from "@/data/dhikr";
+
+type Tab = "tasbih" | "sets" | "names";
+const NAMES_DATA = [
+  { n: 1, ar: "ٱللَّهُ", en: "Allah", mean: "The One God" },
+  { n: 2, ar: "ٱلرَّحْمَـٰنُ", en: "Ar-Rahman", mean: "The Most Gracious" },
+  { n: 3, ar: "ٱلرَّحِيمُ", en: "Ar-Rahim", mean: "The Most Merciful" },
+  { n: 4, ar: "ٱلْمَلِكُ", en: "Al-Malik", mean: "The King" },
+  { n: 5, ar: "ٱلْقُدُّوسُ", en: "Al-Quddus", mean: "The Most Sacred" },
+  { n: 6, ar: "ٱلسَّلَامُ", en: "As-Salam", mean: "The Source of Peace" },
+  { n: 7, ar: "ٱلْمُؤْمِنُ", en: "Al-Mu'min", mean: "The Guardian of Faith" },
+  { n: 8, ar: "ٱلْمُهَيْمِنُ", en: "Al-Muhaymin", mean: "The Protector" },
+  { n: 9, ar: "ٱلْعَزِيزُ", en: "Al-Aziz", mean: "The Almighty" },
+  { n: 10, ar: "ٱلْجَبَّارُ", en: "Al-Jabbar", mean: "The Compeller" },
+  { n: 11, ar: "ٱلْمُتَكَبِّرُ", en: "Al-Mutakabbir", mean: "The Dominant" },
+  { n: 12, ar: "ٱلْخَالِقُ", en: "Al-Khaliq", mean: "The Creator" },
+];
 
 export default function DhikrScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { dhikrCounts, incrementDhikr, resetDhikr } = useApp();
-  const [activeTab, setActiveTab] = useState<"tasbih" | "sets" | "names">("tasbih");
-  const [activeSetId, setActiveSetId] = useState<string | null>(null);
-  const [activeDhikrIdx, setActiveDhikrIdx] = useState(0);
-  const [tapCount, setTapCount] = useState(0);
-  const [currentTarget, setCurrentTarget] = useState(33);
-  const [selectedQuickDhikr, setSelectedQuickDhikr] = useState(quickDhikr[0]);
+  const [tab, setTab] = useState<Tab>("tasbih");
+  const [selected, setSelected] = useState(quickDhikr[0]);
+  const [target, setTarget] = useState(33);
+  const [count, setCount] = useState(0);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-  const isWeb = Platform.OS === "web";
-  const topPad = isWeb ? 67 : insets.top;
-  const bottomPad = isWeb ? 34 : 0;
+  const topPad = Platform.OS === "web" ? 0 : insets.top;
+  const progress = Math.min(count / target, 1);
+  const cycle = Math.floor(count / target);
+  const displayCount = count === 0 ? 0 : count % target === 0 ? target : count % target;
 
-  function handleTap() {
+  function tap() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const next = tapCount + 1;
-    setTapCount(next);
-    incrementDhikr(selectedQuickDhikr.id);
-    if (next >= currentTarget) {
+    const next = count + 1;
+    setCount(next);
+    incrementDhikr(selected.id);
+    if (next % target === 0) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
   }
 
-  function handleReset() {
+  function reset() {
     Haptics.selectionAsync();
-    setTapCount(0);
-    resetDhikr(selectedQuickDhikr.id);
+    setCount(0);
+    resetDhikr(selected.id);
   }
 
-  const s = styles(colors, topPad, bottomPad);
-  const progress = Math.min(tapCount / currentTarget, 1);
-  const circumference = 2 * Math.PI * 100;
-  const completed = Math.floor(tapCount / currentTarget);
-
   return (
-    <View style={s.container}>
-      <View style={s.header}>
-        <Text style={s.title}>Dhikr</Text>
-        <Text style={s.titleArabic}>الذكر</Text>
+    <View style={[styles.wrap, { backgroundColor: colors.background }]}>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: topPad + 18 }]}>
+        <View>
+          <Text style={[styles.title, { color: colors.foreground }]}>Dhikr</Text>
+          <Text style={[styles.titleAr, { color: colors.accent, fontFamily: "Amiri_400Regular" }]}>الذكر</Text>
+        </View>
+        <TouchableOpacity onPress={() => router.push("/names")} style={[styles.namesBtn, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "30" }]}>
+          <Text style={[styles.namesBtnTxt, { color: colors.primary }]}>99 Names</Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={s.tabRow}>
-        {(["tasbih", "sets", "names"] as const).map(tab => (
+      {/* Tabs */}
+      <View style={[styles.tabRow, { backgroundColor: colors.muted }]}>
+        {(["tasbih", "sets", "names"] as Tab[]).map(t => (
           <TouchableOpacity
-            key={tab}
-            style={[s.tab, activeTab === tab && s.tabActive]}
-            onPress={() => setActiveTab(tab)}
+            key={t}
+            style={[styles.tabBtn, t === tab && [styles.tabBtnActive, { backgroundColor: colors.card }]]}
+            onPress={() => setTab(t)}
           >
-            <Text style={[s.tabText, activeTab === tab && s.tabTextActive]}>
-              {tab === "tasbih" ? "Tasbih" : tab === "sets" ? "Dhikr Sets" : "99 Names"}
+            <Text style={[styles.tabTxt, { color: t === tab ? colors.foreground : colors.mutedForeground },
+              t === tab && { fontFamily: "Inter_700Bold" }]}>
+              {t === "tasbih" ? "Tasbih" : t === "sets" ? "Dhikr Sets" : "Quick Names"}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {activeTab === "tasbih" && (
-        <ScrollView contentContainerStyle={s.tasbihContainer} showsVerticalScrollIndicator={false}>
-          {/* Dhikr selector */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.dhikrSelector} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
+      {/* ── TASBIH ── */}
+      {tab === "tasbih" && (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.tasbihScroll}>
+          {/* Dhikr selector chips */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
             {quickDhikr.map(d => (
               <TouchableOpacity
                 key={d.id}
-                style={[s.dhikrChip, selectedQuickDhikr.id === d.id && s.dhikrChipActive]}
-                onPress={() => {
-                  setSelectedQuickDhikr(d);
-                  setCurrentTarget(d.count);
-                  setTapCount(0);
-                }}
+                style={[styles.chip,
+                  { backgroundColor: selected.id === d.id ? colors.primary : colors.card, borderColor: selected.id === d.id ? colors.primary : colors.border }
+                ]}
+                onPress={() => { setSelected(d); setTarget(d.count); setCount(0); }}
               >
-                <Text style={[s.dhikrChipText, selectedQuickDhikr.id === d.id && s.dhikrChipTextActive]}>
+                <Text style={[styles.chipTxt, { color: selected.id === d.id ? "#fff" : colors.foreground }]}>
                   {d.transliteration}
                 </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
 
-          <Text style={s.currentArabic}>{selectedQuickDhikr.arabic}</Text>
-          <Text style={s.currentTrans}>{selectedQuickDhikr.transliteration}</Text>
-          <Text style={s.currentMeaning}>{selectedQuickDhikr.translation}</Text>
+          {/* Selected dhikr display */}
+          <Text style={[styles.dhikrAr, { color: colors.primary, fontFamily: "Amiri_700Bold" }]}>
+            {selected.arabic}
+          </Text>
+          <Text style={[styles.dhikrTrans, { color: colors.mutedForeground }]}>{selected.transliteration}</Text>
+          <Text style={[styles.dhikrMean, { color: colors.foreground }]}>{selected.translation}</Text>
 
-          {/* Counter */}
-          <View style={s.counterWrapper}>
-            <View style={s.counterCircle}>
-              <Text style={s.counterNum}>{tapCount % (currentTarget || 1) === 0 && tapCount > 0 ? currentTarget : tapCount % (currentTarget || 1)}</Text>
-              <Text style={s.counterTarget}>of {currentTarget}</Text>
-              {completed > 0 && <Text style={s.completedBadge}>×{completed}</Text>}
+          {/* ── COUNTER CIRCLE ── */}
+          <View style={styles.counterWrap}>
+            {/* Outer ring */}
+            <View style={[styles.counterRingOuter, { borderColor: colors.border }]}>
+              <View style={[styles.counterRingInner, { borderColor: colors.primary }]}>
+                <Text style={[styles.counterNum, { color: colors.primary }]}>{displayCount}</Text>
+                <Text style={[styles.counterOf, { color: colors.mutedForeground }]}>of {target}</Text>
+                {cycle > 0 && (
+                  <View style={[styles.cycleBadge, { backgroundColor: colors.accent }]}>
+                    <Text style={styles.cycleTxt}>×{cycle}</Text>
+                  </View>
+                )}
+              </View>
             </View>
           </View>
 
           {/* Tap button */}
           <TouchableOpacity
-            style={s.tapButton}
-            onPress={handleTap}
-            activeOpacity={0.85}
+            style={[styles.tapBtn, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
+            onPress={tap}
+            activeOpacity={0.88}
           >
-            <Text style={s.tapButtonText}>{selectedQuickDhikr.arabic}</Text>
-            <Text style={s.tapLabel}>Tap to count</Text>
+            <Text style={[styles.tapBtnAr, { fontFamily: "Amiri_700Bold" }]}>{selected.arabic}</Text>
+            <Text style={styles.tapBtnLabel}>Tap to count</Text>
           </TouchableOpacity>
 
-          <View style={s.countActions}>
-            <TouchableOpacity style={s.resetBtn} onPress={handleReset}>
-              <Feather name="rotate-ccw" size={16} color={colors.mutedForeground} />
-              <Text style={s.resetText}>Reset</Text>
+          {/* Controls */}
+          <View style={styles.controls}>
+            <TouchableOpacity style={styles.resetBtn} onPress={reset}>
+              <Feather name="rotate-ccw" size={15} color={colors.mutedForeground} />
+              <Text style={[styles.resetTxt, { color: colors.mutedForeground }]}>Reset</Text>
             </TouchableOpacity>
-            <View style={s.targetRow}>
+            <View style={styles.targetRow}>
               {[33, 100, 1000].map(t => (
                 <TouchableOpacity
                   key={t}
-                  style={[s.targetBtn, currentTarget === t && s.targetBtnActive]}
-                  onPress={() => setCurrentTarget(t)}
+                  style={[styles.targetBtn, { backgroundColor: target === t ? colors.primary : colors.muted }]}
+                  onPress={() => setTarget(t)}
                 >
-                  <Text style={[s.targetText, currentTarget === t && s.targetTextActive]}>{t}</Text>
+                  <Text style={[styles.targetTxt, { color: target === t ? "#fff" : colors.mutedForeground }]}>{t}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
-          <View style={{ height: 120 + bottomPad }} />
         </ScrollView>
       )}
 
-      {activeTab === "sets" && (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 + bottomPad }} showsVerticalScrollIndicator={false}>
+      {/* ── DHIKR SETS ── */}
+      {tab === "sets" && (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
           {dhikrSets.map(set => (
-            <TouchableOpacity
-              key={set.id}
-              style={[s.setCard, activeSetId === set.id && s.setCardActive]}
-              onPress={() => setActiveSetId(activeSetId === set.id ? null : set.id)}
-              activeOpacity={0.85}
-            >
-              <View style={s.setHeader}>
-                <View>
-                  <Text style={s.setName}>{set.name}</Text>
-                  <Text style={s.setNameAr}>{set.nameArabic}</Text>
-                  <Text style={s.setDesc}>{set.description}</Text>
+            <View key={set.id} style={[styles.setCard, { backgroundColor: colors.card, borderColor: expanded === set.id ? colors.primary : colors.border }]}>
+              <TouchableOpacity
+                style={styles.setCardHdr}
+                onPress={() => setExpanded(expanded === set.id ? null : set.id)}
+                activeOpacity={0.8}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.setName, { color: colors.foreground }]}>{set.name}</Text>
+                  <Text style={[styles.setNameAr, { color: colors.accent, fontFamily: "Amiri_400Regular" }]}>{set.nameArabic}</Text>
+                  <Text style={[styles.setDesc, { color: colors.mutedForeground }]}>{set.description}</Text>
                 </View>
-                <Feather
-                  name={activeSetId === set.id ? "chevron-up" : "chevron-down"}
-                  size={18}
-                  color={colors.mutedForeground}
-                />
-              </View>
-              {activeSetId === set.id && (
-                <View style={s.setItems}>
-                  {set.items.map((item, idx) => {
-                    const count = dhikrCounts[`${set.id}-${item.id}`] || 0;
+                <Feather name={expanded === set.id ? "chevron-up" : "chevron-down"} size={18} color={colors.mutedForeground} />
+              </TouchableOpacity>
+              {expanded === set.id && (
+                <View style={[styles.setItems, { borderTopColor: colors.border }]}>
+                  {set.items.map(item => {
+                    const c = dhikrCounts[`${set.id}-${item.id}`] ?? 0;
+                    const done = c >= item.count;
                     return (
-                      <View key={item.id} style={s.setItem}>
-                        <View style={s.setItemLeft}>
-                          <Text style={s.setItemArabic}>{item.arabic}</Text>
-                          <Text style={s.setItemTrans}>{item.transliteration}</Text>
-                          <Text style={s.setItemMeaning}>{item.translation} (×{item.count})</Text>
-                          {item.virtue && <Text style={s.setItemVirtue}>{item.virtue}</Text>}
+                      <View key={item.id} style={[styles.setItem, { borderBottomColor: colors.border }]}>
+                        <View style={{ flex: 1, marginRight: 12 }}>
+                          <Text style={[styles.setItemAr, { color: colors.primary, fontFamily: "Amiri_400Regular" }]}>{item.arabic}</Text>
+                          <Text style={[styles.setItemTrans, { color: colors.mutedForeground }]}>{item.transliteration}</Text>
+                          <Text style={[styles.setItemMean, { color: colors.foreground }]}>{item.translation} · ×{item.count}</Text>
                         </View>
                         <TouchableOpacity
-                          style={[s.setCountBtn, count >= item.count && s.setCountBtnDone]}
+                          style={[styles.setItemBtn, { backgroundColor: done ? colors.primary : colors.primary + "15" }]}
                           onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            if (count < item.count) incrementDhikr(`${set.id}-${item.id}`);
+                            if (!done) incrementDhikr(`${set.id}-${item.id}`);
                           }}
                         >
-                          <Text style={s.setCount}>{Math.min(count, item.count)}</Text>
-                          <Text style={s.setCountOf}>/{item.count}</Text>
+                          <Text style={[styles.setItemCount, { color: done ? "#fff" : colors.primary }]}>
+                            {Math.min(c, item.count)}
+                          </Text>
+                          <Text style={[styles.setItemOf, { color: done ? "rgba(255,255,255,0.6)" : colors.mutedForeground }]}>
+                            /{item.count}
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     );
                   })}
                 </View>
               )}
-            </TouchableOpacity>
+            </View>
           ))}
         </ScrollView>
       )}
 
-      {activeTab === "names" && (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 + bottomPad }} showsVerticalScrollIndicator={false}>
-          <Text style={s.namesIntro}>الْأَسْمَاءُ الْحُسْنَى</Text>
-          <Text style={s.namesIntroSub}>The 99 Beautiful Names of Allah</Text>
-          {Array.from({ length: 9 }, (_, row) =>
-            <View key={row} style={s.namesRow}>
-              {Array.from({ length: 3 }, (_, col) => {
-                const n = row * 3 + col + 1;
-                if (n > 99) return null;
-                return (
-                  <TouchableOpacity
-                    key={n}
-                    style={s.nameCard}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      incrementDhikr(`name-${n}`);
-                    }}
-                  >
-                    <Text style={s.nameNumber}>{n}</Text>
-                    <Text style={s.nameCount}>{dhikrCounts[`name-${n}`] || 0}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
+      {/* ── QUICK NAMES ── */}
+      {tab === "names" && (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
+          <Text style={[styles.namesIntro, { color: colors.primary, fontFamily: "Amiri_700Bold" }]}>
+            أَسْمَاءُ اللَّهِ الْحُسْنَى
+          </Text>
+          <Text style={[styles.namesIntroSub, { color: colors.mutedForeground }]}>
+            Tap a name to count your recitation
+          </Text>
+          <View style={styles.namesGrid}>
+            {NAMES_DATA.map(n => {
+              const c = dhikrCounts[`name-${n.n}`] ?? 0;
+              return (
+                <TouchableOpacity
+                  key={n.n}
+                  style={[styles.nameCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); incrementDhikr(`name-${n.n}`); }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.nameNum, { color: colors.mutedForeground }]}>{n.n}</Text>
+                  <Text style={[styles.nameAr, { color: colors.primary, fontFamily: "Amiri_400Regular" }]}>{n.ar}</Text>
+                  <Text style={[styles.nameEn, { color: colors.foreground }]}>{n.en}</Text>
+                  <Text style={[styles.nameMean, { color: colors.mutedForeground }]}>{n.mean}</Text>
+                  {c > 0 && <View style={[styles.nameCount, { backgroundColor: colors.primary }]}><Text style={styles.nameCountTxt}>{c}</Text></View>}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <TouchableOpacity
+            style={[styles.viewAllBtn, { backgroundColor: colors.primary }]}
+            onPress={() => router.push("/names")}
+          >
+            <Text style={styles.viewAllTxt}>View All 99 Names</Text>
+            <Feather name="chevron-right" size={16} color="#fff" />
+          </TouchableOpacity>
         </ScrollView>
       )}
     </View>
   );
 }
 
-const styles = (colors: ReturnType<typeof useColors>, topPad: number, bottomPad: number) =>
-  StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
-    header: {
-      paddingTop: topPad + 16,
-      paddingHorizontal: 20,
-      paddingBottom: 12,
-    },
-    title: {
-      fontFamily: "Inter_700Bold",
-      fontSize: 28,
-      color: colors.foreground,
-    },
-    titleArabic: {
-      fontFamily: "Amiri_400Regular",
-      fontSize: 20,
-      color: colors.accent,
-      marginTop: 2,
-    },
-    tabRow: {
-      flexDirection: "row",
-      marginHorizontal: 16,
-      marginBottom: 16,
-      backgroundColor: colors.muted,
-      borderRadius: 10,
-      padding: 3,
-    },
-    tab: { flex: 1, paddingVertical: 7, alignItems: "center", borderRadius: 8 },
-    tabActive: { backgroundColor: colors.card },
-    tabText: { fontFamily: "Inter_500Medium", fontSize: 13, color: colors.mutedForeground },
-    tabTextActive: { color: colors.foreground, fontFamily: "Inter_600SemiBold" },
-    tasbihContainer: { paddingHorizontal: 16, alignItems: "center" },
-    dhikrSelector: { width: "100%", marginBottom: 16 },
-    dhikrChip: {
-      paddingHorizontal: 14, paddingVertical: 8,
-      backgroundColor: colors.card, borderRadius: 20,
-      borderWidth: 1, borderColor: colors.border,
-    },
-    dhikrChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-    dhikrChipText: { fontFamily: "Inter_500Medium", fontSize: 13, color: colors.foreground },
-    dhikrChipTextActive: { color: "#fff" },
-    currentArabic: {
-      fontFamily: "Amiri_700Bold",
-      fontSize: 28,
-      color: colors.primary,
-      textAlign: "center",
-      marginBottom: 4,
-    },
-    currentTrans: {
-      fontFamily: "Inter_400Regular",
-      fontSize: 14,
-      color: colors.mutedForeground,
-      textAlign: "center",
-      marginBottom: 4,
-    },
-    currentMeaning: {
-      fontFamily: "Inter_400Regular",
-      fontSize: 13,
-      color: colors.foreground,
-      textAlign: "center",
-      marginBottom: 20,
-    },
-    counterWrapper: { marginBottom: 20 },
-    counterCircle: {
-      width: 160,
-      height: 160,
-      borderRadius: 80,
-      borderWidth: 6,
-      borderColor: colors.primary,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: colors.primary + "10",
-    },
-    counterNum: {
-      fontFamily: "Inter_700Bold",
-      fontSize: 52,
-      color: colors.primary,
-    },
-    counterTarget: {
-      fontFamily: "Inter_400Regular",
-      fontSize: 13,
-      color: colors.mutedForeground,
-    },
-    completedBadge: {
-      fontFamily: "Inter_700Bold",
-      fontSize: 14,
-      color: colors.accent,
-    },
-    tapButton: {
-      backgroundColor: colors.primary,
-      borderRadius: 24,
-      paddingVertical: 20,
-      paddingHorizontal: 40,
-      alignItems: "center",
-      shadowColor: colors.primary,
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.35,
-      shadowRadius: 12,
-      elevation: 8,
-      marginBottom: 20,
-      minWidth: 220,
-    },
-    tapButtonText: {
-      fontFamily: "Amiri_700Bold",
-      fontSize: 24,
-      color: "#fff",
-      marginBottom: 4,
-    },
-    tapLabel: {
-      fontFamily: "Inter_500Medium",
-      fontSize: 12,
-      color: "rgba(255,255,255,0.7)",
-    },
-    countActions: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      width: "100%",
-      marginBottom: 20,
-    },
-    resetBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      padding: 10,
-    },
-    resetText: { fontFamily: "Inter_500Medium", fontSize: 13, color: colors.mutedForeground },
-    targetRow: { flexDirection: "row", gap: 8 },
-    targetBtn: {
-      paddingHorizontal: 14, paddingVertical: 8,
-      borderRadius: 10,
-      backgroundColor: colors.muted,
-    },
-    targetBtnActive: { backgroundColor: colors.primary },
-    targetText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: colors.mutedForeground },
-    targetTextActive: { color: "#fff" },
-    setCard: {
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      marginBottom: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: "hidden",
-    },
-    setCardActive: { borderColor: colors.primary },
-    setHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      padding: 16,
-    },
-    setName: { fontFamily: "Inter_700Bold", fontSize: 15, color: colors.foreground },
-    setNameAr: { fontFamily: "Amiri_400Regular", fontSize: 16, color: colors.accent },
-    setDesc: { fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground },
-    setItems: { borderTopWidth: 1, borderTopColor: colors.border },
-    setItem: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      padding: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    setItemLeft: { flex: 1, marginRight: 10 },
-    setItemArabic: { fontFamily: "Amiri_400Regular", fontSize: 18, color: colors.primary, marginBottom: 2 },
-    setItemTrans: { fontFamily: "Inter_500Medium", fontSize: 12, color: colors.mutedForeground },
-    setItemMeaning: { fontFamily: "Inter_400Regular", fontSize: 12, color: colors.foreground },
-    setItemVirtue: { fontFamily: "Inter_400Regular", fontSize: 11, color: colors.accent, marginTop: 2, fontStyle: "italic" },
-    setCountBtn: {
-      flexDirection: "row",
-      alignItems: "baseline",
-      backgroundColor: colors.primary + "15",
-      borderRadius: 12,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-    },
-    setCountBtnDone: { backgroundColor: colors.primary },
-    setCount: { fontFamily: "Inter_700Bold", fontSize: 18, color: colors.primary },
-    setCountOf: { fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground },
-    namesIntro: {
-      fontFamily: "Amiri_700Bold",
-      fontSize: 28,
-      color: colors.primary,
-      textAlign: "center",
-      marginBottom: 4,
-    },
-    namesIntroSub: {
-      fontFamily: "Inter_400Regular",
-      fontSize: 14,
-      color: colors.mutedForeground,
-      textAlign: "center",
-      marginBottom: 16,
-    },
-    namesRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
-    nameCard: {
-      flex: 1,
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: 12,
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    nameNumber: { fontFamily: "Inter_700Bold", fontSize: 16, color: colors.primary },
-    nameCount: { fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground, marginTop: 2 },
-  });
+const styles = StyleSheet.create({
+  wrap: { flex: 1 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", paddingHorizontal: 20, paddingBottom: 14 },
+  title: { fontFamily: "Inter_700Bold", fontSize: 28 },
+  titleAr: { fontSize: 20, marginTop: 2 },
+  namesBtn: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 8 },
+  namesBtnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
+  tabRow: { flexDirection: "row", marginHorizontal: 16, marginBottom: 16, borderRadius: 12, padding: 3 },
+  tabBtn: { flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 10 },
+  tabBtnActive: { shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  tabTxt: { fontFamily: "Inter_500Medium", fontSize: 12 },
+  tasbihScroll: { paddingHorizontal: 16, alignItems: "center", paddingBottom: 120 },
+  chipRow: { gap: 8, paddingRight: 4, marginBottom: 20 },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  chipTxt: { fontFamily: "Inter_500Medium", fontSize: 13 },
+  dhikrAr: { fontSize: 32, textAlign: "center", marginBottom: 4 },
+  dhikrTrans: { fontFamily: "Inter_400Regular", fontSize: 14, textAlign: "center", marginBottom: 4 },
+  dhikrMean: { fontFamily: "Inter_400Regular", fontSize: 13, textAlign: "center", marginBottom: 24 },
+  counterWrap: { marginBottom: 28 },
+  counterRingOuter: { width: 200, height: 200, borderRadius: 100, borderWidth: 2, justifyContent: "center", alignItems: "center" },
+  counterRingInner: { width: 172, height: 172, borderRadius: 86, borderWidth: 5, justifyContent: "center", alignItems: "center", position: "relative" },
+  counterNum: { fontFamily: "Inter_700Bold", fontSize: 58 },
+  counterOf: { fontFamily: "Inter_400Regular", fontSize: 13 },
+  cycleBadge: { position: "absolute", top: 10, right: 10, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 },
+  cycleTxt: { fontFamily: "Inter_700Bold", fontSize: 12, color: "#fff" },
+  tapBtn: { borderRadius: 28, paddingVertical: 22, paddingHorizontal: 48, alignItems: "center", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8, marginBottom: 24, minWidth: 240 },
+  tapBtnAr: { fontSize: 26, color: "#fff", marginBottom: 4 },
+  tapBtnLabel: { fontFamily: "Inter_500Medium", fontSize: 12, color: "rgba(255,255,255,0.7)" },
+  controls: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%" },
+  resetBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 10 },
+  resetTxt: { fontFamily: "Inter_500Medium", fontSize: 13 },
+  targetRow: { flexDirection: "row", gap: 8 },
+  targetBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  targetTxt: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
+  setCard: { borderRadius: 16, marginBottom: 10, borderWidth: 1, overflow: "hidden" },
+  setCardHdr: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16 },
+  setName: { fontFamily: "Inter_700Bold", fontSize: 15 },
+  setNameAr: { fontSize: 16, marginTop: 2 },
+  setDesc: { fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 },
+  setItems: { borderTopWidth: 1 },
+  setItem: { flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: StyleSheet.hairlineWidth },
+  setItemAr: { fontSize: 18, marginBottom: 2 },
+  setItemTrans: { fontFamily: "Inter_500Medium", fontSize: 12 },
+  setItemMean: { fontFamily: "Inter_400Regular", fontSize: 12 },
+  setItemBtn: { flexDirection: "row", alignItems: "baseline", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  setItemCount: { fontFamily: "Inter_700Bold", fontSize: 18 },
+  setItemOf: { fontFamily: "Inter_400Regular", fontSize: 12 },
+  namesIntro: { fontSize: 28, textAlign: "center", marginBottom: 4 },
+  namesIntroSub: { fontFamily: "Inter_400Regular", fontSize: 13, textAlign: "center", marginBottom: 16 },
+  namesGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  nameCard: { width: "30%", flexGrow: 1, borderRadius: 14, borderWidth: 1, padding: 12, alignItems: "center", gap: 2, position: "relative" },
+  nameNum: { fontFamily: "Inter_400Regular", fontSize: 10, alignSelf: "flex-start" },
+  nameAr: { fontSize: 20, textAlign: "center", marginBottom: 2 },
+  nameEn: { fontFamily: "Inter_700Bold", fontSize: 11, textAlign: "center" },
+  nameMean: { fontFamily: "Inter_400Regular", fontSize: 10, textAlign: "center" },
+  nameCount: { position: "absolute", top: 6, right: 6, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 2 },
+  nameCountTxt: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#fff" },
+  viewAllBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 16, padding: 16, marginTop: 16 },
+  viewAllTxt: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" },
+});

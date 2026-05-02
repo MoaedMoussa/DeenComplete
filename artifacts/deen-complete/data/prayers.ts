@@ -27,7 +27,7 @@ function getMethodParams(method: string) {
     case "Egyptian": return CalculationMethod.Egyptian();
     case "UmmAlQura": return CalculationMethod.UmmAlQura();
     case "Karachi": return CalculationMethod.Karachi();
-    case "Gulf": return CalculationMethod.Gulf();
+    case "Gulf": return CalculationMethod.UmmAlQura();
     case "MoonsightingCommittee": return CalculationMethod.MoonsightingCommittee();
     case "Turkey": return CalculationMethod.Turkey();
     case "Tehran": return CalculationMethod.Tehran();

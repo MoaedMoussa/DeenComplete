@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform,
-  Modal, TextInput, FlatList, StatusBar,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity,
+  Platform, Modal, TextInput, FlatList, StatusBar,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -14,11 +14,8 @@ import { getAllPrayerEntries, getNextPrayerEntry, formatTime, formatCountdown } 
 import { searchCities, City } from "@/data/cities";
 
 type PrayerKey = "fajr" | "dhuhr" | "asr" | "maghrib" | "isha";
-const PRAYER_KEYS: PrayerKey[] = ["fajr", "dhuhr", "asr", "maghrib", "isha"];
-
-const ICONS: Record<string, string> = {
-  fajr: "🌙", dhuhr: "☀️", asr: "🌤️", maghrib: "🌅", isha: "🌙",
-};
+const KEYS: PrayerKey[] = ["fajr", "dhuhr", "asr", "maghrib", "isha"];
+const EMOJI: Record<string, string> = { fajr: "🌙", dhuhr: "☀️", asr: "🌤", maghrib: "🌅", isha: "🌙" };
 
 export default function PrayerScreen() {
   const colors = useColors();
@@ -27,250 +24,251 @@ export default function PrayerScreen() {
   const [now, setNow] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
   const [query, setQuery] = useState("");
-  const [tick, setTick] = useState(0);
 
-  const isWeb = Platform.OS === "web";
-  const topPad = isWeb ? 0 : insets.top;
+  const topPad = Platform.OS === "web" ? 0 : insets.top;
 
   useEffect(() => {
-    const t = setInterval(() => { setNow(new Date()); setTick(x => x + 1); refreshPrayerTimes(); }, 20000);
+    const t = setInterval(() => { setNow(new Date()); refreshPrayerTimes(); }, 20000);
     return () => clearInterval(t);
   }, []);
 
   const tz = location?.timezone;
   const allEntries = getAllPrayerEntries(prayerTimes);
   const sunrise = allEntries.find(e => e.key === "sunrise");
-  const displayPrayers = allEntries.filter(e => e.key !== "sunrise");
+  const prayers = allEntries.filter(e => e.key !== "sunrise");
   const next = getNextPrayerEntry(prayerTimes);
-
   const todayKey = now.toISOString().split("T")[0];
   const todayLog = prayerLogs.find(l => l.date === todayKey);
-  const prayedCount = PRAYER_KEYS.filter(k => todayLog?.[k] === "prayed").length;
+  const prayedCount = KEYS.filter(k => todayLog?.[k] === "prayed").length;
+  const cities = searchCities(query);
 
-  function handleLog(key: PrayerKey, status: "prayed" | "missed" | "late") {
+  function log(key: PrayerKey, status: "prayed" | "late" | "missed") {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     logPrayer(todayKey, key, status);
   }
 
-  function handleCitySelect(city: City) {
-    Haptics.selectionAsync();
-    setManualCity(city);
-    setShowPicker(false);
-    setQuery("");
-  }
-
-  const cities = searchCities(query);
-  const s = styles(colors, topPad);
-
   return (
-    <View style={s.container}>
-      <StatusBar barStyle="dark-content" />
+    <View style={[styles.wrap, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle="light-content" />
 
-      {/* Hero Header */}
-      <View style={s.hero}>
-        <View style={s.heroTop}>
-          <TouchableOpacity style={s.locationBtn} onPress={() => setShowPicker(true)} activeOpacity={0.8}>
-            <Feather name="map-pin" size={13} color="#fff" />
-            <Text style={s.locationTxt}>{location?.city ?? "Set Location"}</Text>
-            <Feather name="chevron-down" size={13} color="rgba(255,255,255,0.7)" />
+      {/* ── HERO ── */}
+      <View style={[styles.hero, { backgroundColor: colors.primary, paddingTop: topPad + 16 }]}>
+        <View style={styles.heroTop}>
+          <TouchableOpacity
+            style={styles.locBtn}
+            onPress={() => setShowPicker(true)}
+          >
+            <Feather name="map-pin" size={12} color="#fff" />
+            <Text style={styles.locTxt}>{location?.city ?? "Set Location"}</Text>
+            <Feather name="chevron-down" size={12} color="rgba(255,255,255,0.65)" />
           </TouchableOpacity>
-          <Text style={s.heroDate}>
+          <Text style={styles.heroDate}>
             {now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", ...(tz ? { timeZone: tz } : {}) })}
           </Text>
         </View>
 
         {next ? (
-          <View style={s.heroBody}>
-            <Text style={s.heroLabel}>Next Prayer</Text>
-            <Text style={s.heroName}>{next.name}</Text>
-            <Text style={s.heroNameAr}>{next.nameArabic}</Text>
-            <Text style={s.heroTime}>{formatTime(next.time, tz)}</Text>
-            <View style={s.heroBadge}>
-              <Feather name="clock" size={12} color={colors.accent} />
-              <Text style={s.heroBadgeTxt}>in {formatCountdown(next.time)}</Text>
+          <View style={styles.heroMain}>
+            <Text style={styles.heroLabel}>Next Prayer</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={styles.heroEmoji}>{EMOJI[next.key]}</Text>
+              <Text style={styles.heroName}>{next.name}</Text>
+            </View>
+            <Text style={[styles.heroNameAr, { fontFamily: "Amiri_400Regular" }]}>{next.nameArabic}</Text>
+            <Text style={styles.heroTime}>{formatTime(next.time, tz)}</Text>
+            <View style={[styles.heroBadge, { backgroundColor: "rgba(0,0,0,0.22)" }]}>
+              <Feather name="clock" size={11} color={colors.accent} />
+              <Text style={[styles.heroBadgeTxt, { color: colors.accent }]}>
+                in {formatCountdown(next.time)}
+              </Text>
             </View>
           </View>
         ) : (
-          <View style={s.heroBody}>
-            <Text style={s.heroLabel}>All Prayers Complete</Text>
-            <Text style={s.heroName}>الحمد لله</Text>
+          <View style={styles.heroMain}>
+            <Text style={[styles.heroName, { color: "#fff" }]}>All Prayers Done</Text>
+            <Text style={[styles.heroNameAr, { fontFamily: "Amiri_400Regular" }]}>الحمد لله</Text>
           </View>
         )}
 
-        {/* Progress dots */}
-        <View style={s.progressRow}>
-          {PRAYER_KEYS.map(k => {
+        <View style={styles.heroDots}>
+          {KEYS.map(k => {
             const st = todayLog?.[k];
             return (
               <View key={k} style={[
-                s.dot,
+                styles.dot,
                 st === "prayed" && { backgroundColor: "#4ADE80" },
-                st === "late" && { backgroundColor: "#FCD34D" },
+                st === "late" && { backgroundColor: "#FBBF24" },
                 st === "missed" && { backgroundColor: "#F87171" },
-                !st && { backgroundColor: "rgba(255,255,255,0.25)" },
+                !st && { backgroundColor: "rgba(255,255,255,0.22)" },
               ]} />
             );
           })}
-          <Text style={s.progressTxt}>{prayedCount}/5 prayed</Text>
+          <Text style={styles.dotLabel}>{prayedCount}/5 prayed</Text>
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
-        {/* Sunrise banner */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
+
+        {/* Sunrise */}
         {sunrise && (
-          <View style={s.sunriseBanner}>
-            <Text style={s.sunriseIcon}>🌅</Text>
-            <Text style={s.sunriseTxt}>Sunrise at {formatTime(sunrise.time, tz)}</Text>
+          <View style={[styles.sunriseRow, { backgroundColor: colors.goldLight, borderColor: colors.accent + "30" }]}>
+            <Text style={{ fontSize: 18 }}>🌅</Text>
+            <Text style={[styles.sunriseTxt, { color: colors.accent }]}>
+              Sunrise · {formatTime(sunrise.time, tz)}
+            </Text>
           </View>
         )}
 
-        {/* Prayer Rows */}
-        <View style={s.prayersCard}>
-          {displayPrayers.map((entry, i) => {
+        {/* Prayer list card */}
+        <View style={[styles.prayerCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {prayers.map((entry, i) => {
             const isNext = next?.key === entry.key;
             const isPast = entry.time < now;
             const key = entry.key as PrayerKey;
-            const status = todayLog?.[key] ?? null;
+            const st = todayLog?.[key] ?? null;
 
             return (
-              <View key={entry.key}>
-                <View style={[s.prayerRow, isNext && s.prayerRowActive]}>
-                  {isNext && <View style={s.activeBar} />}
+              <View key={key}>
+                <View style={[
+                  styles.prayerRow,
+                  isNext && { backgroundColor: colors.primary + "07" },
+                ]}>
+                  {/* Active indicator */}
+                  {isNext && <View style={[styles.activeBar, { backgroundColor: colors.primary }]} />}
 
-                  <View style={s.prayerIcon}>
-                    <Text style={{ fontSize: 18 }}>{ICONS[entry.key]}</Text>
-                  </View>
+                  <Text style={styles.prayerEmoji}>{EMOJI[key]}</Text>
 
-                  <View style={s.prayerLeft}>
-                    <Text style={[s.prayerName, isNext && s.activeName, isPast && !isNext && s.pastName]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[
+                      styles.prayerName,
+                      { color: isNext ? colors.primary : isPast ? colors.mutedForeground : colors.foreground },
+                      isNext && { fontFamily: "Inter_700Bold" },
+                    ]}>
                       {entry.name}
                     </Text>
-                    <Text style={s.prayerAr}>{entry.nameArabic}</Text>
+                    <Text style={[styles.prayerAr, { color: colors.mutedForeground, fontFamily: "Amiri_400Regular" }]}>
+                      {entry.nameArabic}
+                    </Text>
                   </View>
 
-                  <Text style={[s.prayerTime, isNext && s.activeTime]}>
+                  <Text style={[styles.prayerTime, { color: isNext ? colors.primary : colors.foreground }]}>
                     {formatTime(entry.time, tz)}
                   </Text>
 
                   {/* Log buttons */}
-                  <View style={s.logRow}>
+                  <View style={styles.logRow}>
                     <TouchableOpacity
-                      style={[s.logBtn, status === "prayed" && s.logBtnGreen]}
-                      onPress={() => handleLog(key, "prayed")}
+                      style={[styles.logBtn, st === "prayed" && styles.logGreen]}
+                      onPress={() => log(key, "prayed")}
                       hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                     >
-                      <Feather name="check" size={11} color={status === "prayed" ? "#fff" : colors.mutedForeground} />
+                      <Feather name="check" size={11} color={st === "prayed" ? "#fff" : colors.mutedForeground} />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[s.logBtn, status === "late" && s.logBtnAmber]}
-                      onPress={() => handleLog(key, "late")}
+                      style={[styles.logBtn, st === "late" && styles.logAmber]}
+                      onPress={() => log(key, "late")}
                       hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                     >
-                      <Feather name="clock" size={11} color={status === "late" ? "#fff" : colors.mutedForeground} />
+                      <Feather name="clock" size={11} color={st === "late" ? "#fff" : colors.mutedForeground} />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[s.logBtn, status === "missed" && s.logBtnRed]}
-                      onPress={() => handleLog(key, "missed")}
+                      style={[styles.logBtn, st === "missed" && styles.logRed]}
+                      onPress={() => log(key, "missed")}
                       hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                     >
-                      <Feather name="x" size={11} color={status === "missed" ? "#fff" : colors.mutedForeground} />
+                      <Feather name="x" size={11} color={st === "missed" ? "#fff" : colors.mutedForeground} />
                     </TouchableOpacity>
                   </View>
                 </View>
-                {i < displayPrayers.length - 1 && <View style={s.divider} />}
+                {i < prayers.length - 1 && <View style={[styles.sep, { backgroundColor: colors.border, marginLeft: 54 }]} />}
               </View>
             );
           })}
         </View>
 
-        {/* Tools */}
-        <View style={s.toolsRow}>
-          <TouchableOpacity style={s.toolCard} onPress={() => router.push("/qibla")} activeOpacity={0.8}>
-            <Text style={s.toolEmoji}>🧭</Text>
-            <Text style={s.toolLabel}>Qibla</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.toolCard} onPress={() => router.push("/prayer-tracker")} activeOpacity={0.8}>
-            <Text style={s.toolEmoji}>📊</Text>
-            <Text style={s.toolLabel}>Tracker</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.toolCard} onPress={() => { requestLocation(); }} activeOpacity={0.8}>
-            <Text style={s.toolEmoji}>📡</Text>
-            <Text style={s.toolLabel}>GPS</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.toolCard} onPress={() => router.push("/settings")} activeOpacity={0.8}>
-            <Text style={s.toolEmoji}>⚙️</Text>
-            <Text style={s.toolLabel}>Method</Text>
-          </TouchableOpacity>
+        {/* Tool row */}
+        <View style={styles.toolRow}>
+          {[
+            { emoji: "🧭", label: "Qibla", action: () => router.push("/qibla") },
+            { emoji: "📊", label: "Tracker", action: () => router.push("/prayer-tracker") },
+            { emoji: "📡", label: "GPS", action: () => requestLocation() },
+            { emoji: "⚙️", label: "Settings", action: () => router.push("/settings") },
+          ].map(t => (
+            <TouchableOpacity
+              key={t.label}
+              style={[styles.toolCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={t.action}
+              activeOpacity={0.8}
+            >
+              <Text style={{ fontSize: 22 }}>{t.emoji}</Text>
+              <Text style={[styles.toolLabel, { color: colors.foreground }]}>{t.label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* Extra times */}
-        <View style={s.extraCard}>
-          <Text style={s.extraTitle}>Additional Times</Text>
-          <View style={s.extraRow}>
-            <Text style={s.extraLabel}>🌙  Islamic Midnight</Text>
-            <Text style={s.extraVal}>{formatTime(prayerTimes.midnight, tz)}</Text>
+        <View style={[styles.extraCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.extraTitle, { color: colors.foreground }]}>Additional Times</Text>
+          <View style={styles.extraRow}>
+            <Text style={[styles.extraLabel, { color: colors.foreground }]}>🌙  Islamic Midnight</Text>
+            <Text style={[styles.extraVal, { color: colors.primary }]}>{formatTime(prayerTimes.midnight, tz)}</Text>
           </View>
-          <View style={s.extraDivider} />
-          <View style={s.extraRow}>
-            <Text style={s.extraLabel}>⭐  Last Third of Night</Text>
-            <Text style={s.extraVal}>{formatTime(prayerTimes.lastThird, tz)}</Text>
+          <View style={[styles.extraSep, { backgroundColor: colors.border }]} />
+          <View style={styles.extraRow}>
+            <Text style={[styles.extraLabel, { color: colors.foreground }]}>⭐  Last Third of Night</Text>
+            <Text style={[styles.extraVal, { color: colors.primary }]}>{formatTime(prayerTimes.lastThird, tz)}</Text>
           </View>
         </View>
-
-        <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* City Picker */}
+      {/* City Picker Modal */}
       <Modal visible={showPicker} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPicker(false)}>
-        <View style={s.modal}>
-          <View style={s.modalHdr}>
-            <Text style={s.modalTitle}>Choose City</Text>
+        <View style={[styles.modal, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHdr, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Choose City</Text>
             <TouchableOpacity onPress={() => { setShowPicker(false); setQuery(""); }}>
               <Feather name="x" size={22} color={colors.foreground} />
             </TouchableOpacity>
           </View>
-
-          <TouchableOpacity style={s.gpsRow} onPress={() => { requestLocation(); setShowPicker(false); }}>
-            <View style={s.gpsIconWrap}>
+          <TouchableOpacity
+            style={[styles.gpsRow, { backgroundColor: colors.primary + "0D", borderColor: colors.primary + "25" }]}
+            onPress={() => { requestLocation(); setShowPicker(false); }}
+          >
+            <View style={[styles.gpsIcon, { backgroundColor: colors.primary + "1A" }]}>
               <Feather name="crosshair" size={18} color={colors.primary} />
             </View>
             <View>
-              <Text style={s.gpsTxt}>Use Current Location (GPS)</Text>
-              <Text style={s.gpsSub}>Auto-detect from device</Text>
+              <Text style={[styles.gpsTxt, { color: colors.primary }]}>Use GPS Location</Text>
+              <Text style={[styles.gpsSub, { color: colors.mutedForeground }]}>Auto-detect from device</Text>
             </View>
           </TouchableOpacity>
-
-          <View style={s.searchWrap}>
+          <View style={[styles.searchRow, { backgroundColor: colors.muted }]}>
             <Feather name="search" size={16} color={colors.mutedForeground} />
             <TextInput
-              style={s.searchInput}
-              placeholder="Search city or country..."
+              style={[styles.searchInput, { color: colors.foreground }]}
+              placeholder="Search city or country…"
               placeholderTextColor={colors.mutedForeground}
               value={query}
               onChangeText={setQuery}
               autoFocus
             />
-            {query.length > 0 && (
-              <TouchableOpacity onPress={() => setQuery("")}>
-                <Feather name="x" size={15} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            )}
           </View>
-
           <FlatList
             data={cities}
             keyExtractor={c => `${c.name}-${c.country}`}
             keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => (
-              <TouchableOpacity style={s.cityRow} onPress={() => handleCitySelect(item)} activeOpacity={0.7}>
-                <View style={s.cityLeft}>
-                  <Text style={s.cityName}>{item.name}</Text>
-                  <Text style={s.citySub}>{item.country} · {item.timezone}</Text>
+              <TouchableOpacity
+                style={[styles.cityRow, { borderBottomColor: colors.border }]}
+                onPress={() => { Haptics.selectionAsync(); setManualCity(item); setShowPicker(false); setQuery(""); }}
+              >
+                <View>
+                  <Text style={[styles.cityName, { color: colors.foreground }]}>{item.name}</Text>
+                  <Text style={[styles.citySub, { color: colors.mutedForeground }]}>{item.country} · {item.timezone}</Text>
                 </View>
-                <Feather name="chevron-right" size={16} color={colors.border} />
+                <Feather name="chevron-right" size={15} color={colors.border} />
               </TouchableOpacity>
             )}
-            ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: colors.border }} />}
           />
         </View>
       </Modal>
@@ -278,73 +276,58 @@ export default function PrayerScreen() {
   );
 }
 
-const styles = (colors: ReturnType<typeof useColors>, topPad: number) =>
-  StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
-    hero: {
-      backgroundColor: colors.primary,
-      paddingTop: topPad + 16,
-      paddingHorizontal: 20,
-      paddingBottom: 24,
-    },
-    heroTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
-    locationBtn: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
-    locationTxt: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" },
-    heroDate: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.7)" },
-    heroBody: { marginBottom: 20 },
-    heroLabel: { fontFamily: "Inter_500Medium", fontSize: 13, color: "rgba(255,255,255,0.65)", marginBottom: 4 },
-    heroName: { fontFamily: "Inter_700Bold", fontSize: 36, color: "#fff" },
-    heroNameAr: { fontFamily: "Amiri_400Regular", fontSize: 22, color: "rgba(255,255,255,0.8)", marginTop: 2 },
-    heroTime: { fontFamily: "Inter_700Bold", fontSize: 48, color: "#fff", marginTop: 4 },
-    heroBadge: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6, alignSelf: "flex-start", backgroundColor: "rgba(0,0,0,0.2)", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5 },
-    heroBadgeTxt: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: colors.accent },
-    progressRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-    dot: { width: 10, height: 10, borderRadius: 5 },
-    progressTxt: { fontFamily: "Inter_500Medium", fontSize: 12, color: "rgba(255,255,255,0.6)", marginLeft: 4 },
-    content: { padding: 16 },
-    sunriseBanner: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.goldLight, borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: colors.accent + "30" },
-    sunriseIcon: { fontSize: 18 },
-    sunriseTxt: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: colors.accent },
-    prayersCard: { backgroundColor: colors.card, borderRadius: 20, overflow: "hidden", borderWidth: 1, borderColor: colors.border, marginBottom: 14, shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-    prayerRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, position: "relative" },
-    prayerRowActive: { backgroundColor: colors.primary + "08" },
-    activeBar: { position: "absolute", left: 0, top: 0, bottom: 0, width: 4, backgroundColor: colors.primary, borderRadius: 2 },
-    prayerIcon: { width: 32, marginRight: 10 },
-    prayerLeft: { flex: 1 },
-    prayerName: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: colors.foreground },
-    activeName: { color: colors.primary, fontFamily: "Inter_700Bold" },
-    pastName: { color: colors.mutedForeground },
-    prayerAr: { fontFamily: "Amiri_400Regular", fontSize: 14, color: colors.mutedForeground, marginTop: 1 },
-    prayerTime: { fontFamily: "Inter_700Bold", fontSize: 16, color: colors.foreground, marginRight: 10, minWidth: 72, textAlign: "right" },
-    activeTime: { color: colors.primary },
-    logRow: { flexDirection: "row", gap: 4 },
-    logBtn: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.muted, justifyContent: "center", alignItems: "center" },
-    logBtnGreen: { backgroundColor: "#22C55E" },
-    logBtnAmber: { backgroundColor: "#F59E0B" },
-    logBtnRed: { backgroundColor: "#EF4444" },
-    divider: { height: 1, backgroundColor: colors.border, marginLeft: 58 },
-    toolsRow: { flexDirection: "row", gap: 10, marginBottom: 14 },
-    toolCard: { flex: 1, backgroundColor: colors.card, borderRadius: 16, padding: 14, alignItems: "center", gap: 6, borderWidth: 1, borderColor: colors.border },
-    toolEmoji: { fontSize: 22 },
-    toolLabel: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: colors.foreground },
-    extraCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
-    extraTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: colors.foreground, marginBottom: 12 },
-    extraRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-    extraLabel: { fontFamily: "Inter_500Medium", fontSize: 14, color: colors.foreground },
-    extraVal: { fontFamily: "Inter_700Bold", fontSize: 14, color: colors.primary },
-    extraDivider: { height: 1, backgroundColor: colors.border, marginVertical: 10 },
-    // Modal
-    modal: { flex: 1, backgroundColor: colors.background },
-    modalHdr: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingTop: 28, borderBottomWidth: 1, borderBottomColor: colors.border },
-    modalTitle: { fontFamily: "Inter_700Bold", fontSize: 22, color: colors.foreground },
-    gpsRow: { flexDirection: "row", alignItems: "center", gap: 14, margin: 16, padding: 16, backgroundColor: colors.primary + "10", borderRadius: 16, borderWidth: 1, borderColor: colors.primary + "25" },
-    gpsIconWrap: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary + "20", justifyContent: "center", alignItems: "center" },
-    gpsTxt: { fontFamily: "Inter_700Bold", fontSize: 15, color: colors.primary },
-    gpsSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground, marginTop: 2 },
-    searchWrap: { flexDirection: "row", alignItems: "center", backgroundColor: colors.muted, borderRadius: 14, marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 14, paddingVertical: 11, gap: 8 },
-    searchInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 15, color: colors.foreground },
-    cityRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 14 },
-    cityLeft: {},
-    cityName: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: colors.foreground },
-    citySub: { fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground, marginTop: 2 },
-  });
+const styles = StyleSheet.create({
+  wrap: { flex: 1 },
+  hero: { paddingHorizontal: 20, paddingBottom: 22 },
+  heroTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
+  locBtn: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(255,255,255,0.14)", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  locTxt: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" },
+  heroDate: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.65)" },
+  heroMain: { marginBottom: 18 },
+  heroLabel: { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.6)", marginBottom: 4 },
+  heroEmoji: { fontSize: 26 },
+  heroName: { fontFamily: "Inter_700Bold", fontSize: 34, color: "#fff" },
+  heroNameAr: { fontSize: 22, color: "rgba(255,255,255,0.75)", marginTop: 2 },
+  heroTime: { fontFamily: "Inter_700Bold", fontSize: 50, color: "#fff", marginTop: 6 },
+  heroBadge: { flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5, marginTop: 8 },
+  heroBadgeTxt: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
+  heroDots: { flexDirection: "row", alignItems: "center", gap: 6 },
+  dot: { width: 9, height: 9, borderRadius: 4.5 },
+  dotLabel: { fontFamily: "Inter_500Medium", fontSize: 11, color: "rgba(255,255,255,0.5)", marginLeft: 4 },
+  sunriseRow: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 14, padding: 12, marginBottom: 12, borderWidth: 1 },
+  sunriseTxt: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
+  prayerCard: { borderRadius: 20, borderWidth: 1, overflow: "hidden", marginBottom: 14, shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
+  prayerRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, position: "relative" },
+  activeBar: { position: "absolute", left: 0, top: 0, bottom: 0, width: 3, borderRadius: 2 },
+  prayerEmoji: { fontSize: 18, width: 28, marginRight: 10 },
+  prayerName: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: "#2C2C2C" },
+  prayerAr: { fontSize: 14, marginTop: 1 },
+  prayerTime: { fontFamily: "Inter_700Bold", fontSize: 15, minWidth: 68, textAlign: "right", marginRight: 10 },
+  logRow: { flexDirection: "row", gap: 4 },
+  logBtn: { width: 26, height: 26, borderRadius: 13, backgroundColor: "#F0F0F0", justifyContent: "center", alignItems: "center" },
+  logGreen: { backgroundColor: "#22C55E" },
+  logAmber: { backgroundColor: "#F59E0B" },
+  logRed: { backgroundColor: "#EF4444" },
+  sep: { height: StyleSheet.hairlineWidth },
+  toolRow: { flexDirection: "row", gap: 10, marginBottom: 14 },
+  toolCard: { flex: 1, borderRadius: 16, padding: 14, alignItems: "center", gap: 6, borderWidth: 1 },
+  toolLabel: { fontFamily: "Inter_600SemiBold", fontSize: 11 },
+  extraCard: { borderRadius: 16, padding: 16, borderWidth: 1 },
+  extraTitle: { fontFamily: "Inter_700Bold", fontSize: 14, marginBottom: 12 },
+  extraRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  extraLabel: { fontFamily: "Inter_500Medium", fontSize: 14 },
+  extraVal: { fontFamily: "Inter_700Bold", fontSize: 14 },
+  extraSep: { height: StyleSheet.hairlineWidth, marginVertical: 10 },
+  modal: { flex: 1 },
+  modalHdr: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingTop: 28, borderBottomWidth: 1 },
+  modalTitle: { fontFamily: "Inter_700Bold", fontSize: 22 },
+  gpsRow: { flexDirection: "row", alignItems: "center", gap: 14, margin: 16, padding: 16, borderRadius: 16, borderWidth: 1 },
+  gpsIcon: { width: 42, height: 42, borderRadius: 21, justifyContent: "center", alignItems: "center" },
+  gpsTxt: { fontFamily: "Inter_700Bold", fontSize: 15 },
+  gpsSub: { fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 16, marginBottom: 8, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
+  searchInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 15 },
+  cityRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
+  cityName: { fontFamily: "Inter_600SemiBold", fontSize: 15 },
+  citySub: { fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 },
+});
