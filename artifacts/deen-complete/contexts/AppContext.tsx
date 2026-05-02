@@ -32,7 +32,7 @@ export interface LocationInfo {
   lng: number;
   city: string;
   country: string;
-  timezone: string;   // IANA timezone string, e.g. "Asia/Riyadh"
+  timezone: string;
   isGPS: boolean;
 }
 
@@ -44,6 +44,7 @@ interface AppContextValue {
   dhikrCounts: Record<string, number>;
   bookmarkedSurahs: number[];
   bookmarkedDuas: string[];
+  locationLoading: boolean;
   updateSettings: (s: Partial<AppSettings>) => void;
   logPrayer: (date: string, prayer: keyof Omit<PrayerLog, "date">, status: "prayed" | "missed" | "late") => void;
   incrementDhikr: (id: string) => void;
@@ -87,6 +88,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [dhikrCounts, setDhikrCounts] = useState<Record<string, number>>({});
   const [bookmarkedSurahs, setBookmarkedSurahs] = useState<number[]>([]);
   const [bookmarkedDuas, setBookmarkedDuas] = useState<string[]>([]);
+  const [locationLoading, setLocationLoading] = useState(true);
 
   useEffect(() => { loadStoredData(); }, []);
 
@@ -114,47 +116,113 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (storedLocation) {
         const loc: LocationInfo = JSON.parse(storedLocation);
-        // Back-fill timezone: try city lookup first, then device timezone
         if (!loc.timezone) {
           const cityMatch = CITIES.find(c => c.name === loc.city && c.country === loc.country);
           loc.timezone = cityMatch?.timezone ?? getDeviceTimezone();
-          // Re-save with timezone populated
           AsyncStorage.setItem("savedLocation", JSON.stringify(loc));
         }
         setLocation(loc);
         recalcPrayerTimes(loc, loadedSettings);
+        setLocationLoading(false);
       } else {
-        requestLocation();
+        await requestLocation();
       }
     } catch {
-      requestLocation();
+      await requestLocation();
     }
   }
 
   function recalcPrayerTimes(loc: LocationInfo, cfg: AppSettings = settings) {
-    const times = getPrayerTimes(loc.lat, loc.lng, new Date(), cfg.calculationMethod, cfg.madhab);
-    setPrayerTimes(times);
+    try {
+      const times = getPrayerTimes(loc.lat, loc.lng, new Date(), cfg.calculationMethod, cfg.madhab);
+      setPrayerTimes(times);
+    } catch {
+    }
   }
 
-  async function requestLocation() {
+  async function guessFromIP(): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch("https://ipapi.co/json/", { signal: controller.signal });
+      clearTimeout(t);
+      const data = await res.json();
+      if (data && !data.error && data.latitude && data.longitude) {
+        const loc: LocationInfo = {
+          lat: parseFloat(String(data.latitude)),
+          lng: parseFloat(String(data.longitude)),
+          city: data.city ?? "Unknown",
+          country: data.country_name ?? "",
+          timezone: data.timezone ?? getDeviceTimezone(),
+          isGPS: false,
+        };
+        applyLocation(loc);
+        return true;
+      }
+    } catch {
+    }
+    return false;
+  }
+
+  function guessFromTimezone() {
+    const tz = getDeviceTimezone();
+    const match = CITIES.find(c => c.timezone === tz);
+    if (match) {
+      applyLocation({
+        lat: match.lat, lng: match.lng, city: match.name,
+        country: match.country, timezone: match.timezone, isGPS: false,
+      });
+    } else {
+      applyLocation({ lat: 21.3891, lng: 39.8579, city: "Makkah", country: "Saudi Arabia", timezone: "Asia/Riyadh", isGPS: false });
+    }
+  }
+
+  function findNearestCity(lat: number, lng: number): City | null {
+    let nearest: City | null = null;
+    let minDist = Infinity;
+    for (const city of CITIES) {
+      const d = Math.sqrt((city.lat - lat) ** 2 + (city.lng - lng) ** 2);
+      if (d < minDist) { minDist = d; nearest = city; }
+    }
+    return minDist < 2.5 ? nearest : null;
+  }
+
+  function applyLocation(loc: LocationInfo) {
+    setLocation(loc);
+    setLocationLoading(false);
+    AsyncStorage.setItem("savedLocation", JSON.stringify(loc));
+    recalcPrayerTimes(loc);
+  }
+
+  async function requestLocation(): Promise<void> {
+    setLocationLoading(true);
+
     if (Platform.OS === "web") {
       if (typeof navigator !== "undefined" && navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          pos => {
-            const tz = getDeviceTimezone();
-            const nearest = findNearestCity(pos.coords.latitude, pos.coords.longitude);
-            const loc: LocationInfo = nearest
-              ? { lat: nearest.lat, lng: nearest.lng, city: nearest.name, country: nearest.country, timezone: nearest.timezone, isGPS: true }
-              : { lat: pos.coords.latitude, lng: pos.coords.longitude, city: "Current Location", country: "", timezone: tz, isGPS: true };
-            applyLocation(loc);
-          },
-          () => guessFromTimezone(),
-          { timeout: 8000 },
-        );
+        return new Promise<void>(resolve => {
+          navigator.geolocation.getCurrentPosition(
+            pos => {
+              const tz = getDeviceTimezone();
+              const nearest = findNearestCity(pos.coords.latitude, pos.coords.longitude);
+              const loc: LocationInfo = nearest
+                ? { lat: nearest.lat, lng: nearest.lng, city: nearest.name, country: nearest.country, timezone: nearest.timezone, isGPS: true }
+                : { lat: pos.coords.latitude, lng: pos.coords.longitude, city: "Current Location", country: "", timezone: tz, isGPS: true };
+              applyLocation(loc);
+              resolve();
+            },
+            async () => {
+              const ok = await guessFromIP();
+              if (!ok) guessFromTimezone();
+              resolve();
+            },
+            { timeout: 8000, maximumAge: 300000 },
+          );
+        });
       } else {
-        guessFromTimezone();
+        const ok = await guessFromIP();
+        if (!ok) guessFromTimezone();
+        return;
       }
-      return;
     }
 
     try {
@@ -178,50 +246,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           isGPS: true,
         });
       } else {
-        guessFromTimezone();
+        const ok = await guessFromIP();
+        if (!ok) guessFromTimezone();
       }
     } catch {
-      guessFromTimezone();
+      const ok = await guessFromIP();
+      if (!ok) guessFromTimezone();
     }
-  }
-
-  /** Best-effort: pick a city whose IANA timezone matches the device */
-  function guessFromTimezone() {
-    const tz = getDeviceTimezone();
-    const match = CITIES.find(c => c.timezone === tz);
-    if (match) {
-      applyLocation({ lat: match.lat, lng: match.lng, city: match.name, country: match.country, timezone: match.timezone, isGPS: false });
-    } else {
-      // Fall back to Makkah but still record that it's a guess
-      applyLocation({ lat: 21.3891, lng: 39.8579, city: "Makkah", country: "Saudi Arabia", timezone: "Asia/Riyadh", isGPS: false });
-    }
-  }
-
-  function findNearestCity(lat: number, lng: number): City | null {
-    let nearest: City | null = null;
-    let minDist = Infinity;
-    for (const city of CITIES) {
-      const d = Math.sqrt((city.lat - lat) ** 2 + (city.lng - lng) ** 2);
-      if (d < minDist) { minDist = d; nearest = city; }
-    }
-    return minDist < 2.5 ? nearest : null;
-  }
-
-  function applyLocation(loc: LocationInfo) {
-    setLocation(loc);
-    AsyncStorage.setItem("savedLocation", JSON.stringify(loc));
-    recalcPrayerTimes(loc);
   }
 
   function setManualCity(city: City) {
-    applyLocation({
-      lat: city.lat,
-      lng: city.lng,
-      city: city.name,
-      country: city.country,
-      timezone: city.timezone,
-      isGPS: false,
-    });
+    applyLocation({ lat: city.lat, lng: city.lng, city: city.name, country: city.country, timezone: city.timezone, isGPS: false });
   }
 
   function refreshPrayerTimes() {
@@ -285,7 +320,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       prayerTimes, location, settings, prayerLogs, dhikrCounts,
-      bookmarkedSurahs, bookmarkedDuas,
+      bookmarkedSurahs, bookmarkedDuas, locationLoading,
       updateSettings, logPrayer, incrementDhikr, resetDhikr,
       toggleBookmarkSurah, toggleBookmarkDua, requestLocation,
       setManualCity, refreshPrayerTimes,
