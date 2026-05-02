@@ -4,6 +4,7 @@ import { Platform } from "react-native";
 import {
   getPrayerTimes,
   fetchPrayerTimesFromAladhan,
+  isPrayerTimesValid,
   DailyPrayerTimes,
   DEFAULT_PRAYER_TIMES,
 } from "@/data/prayers";
@@ -139,14 +140,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Try aladhan.com API first, fall back to adhan library
+  // Compute prayer times: adhan library first (instant, no network),
+  // then try Aladhan API for verified accuracy.
   async function fetchAndSetPrayerTimes(loc: LocationInfo, cfg: AppSettings = settings) {
-    // Immediately set local times so screen isn't empty
+    // 1. Always start with the local adhan library — guaranteed valid dates, no network
     const localTimes = getPrayerTimes(loc.lat, loc.lng, new Date(), cfg.calculationMethod, cfg.madhab);
-    setPrayerTimes(localTimes);
-    setPrayerTimesSource("local");
+    if (isPrayerTimesValid(localTimes)) {
+      setPrayerTimes(localTimes);
+      setPrayerTimesSource("local");
+    }
 
-    // Then try API for accurate times
+    // 2. Try Aladhan API for scholar-verified accuracy
     try {
       const apiTimes = await fetchPrayerTimesFromAladhan(
         loc.lat, loc.lng,
@@ -154,10 +158,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         cfg.madhab,
         loc.timezone,
       );
-      setPrayerTimes(apiTimes);
-      setPrayerTimesSource("api");
+      // Only adopt API times if every single date is valid and ordered correctly
+      if (isPrayerTimesValid(apiTimes)) {
+        setPrayerTimes(apiTimes);
+        setPrayerTimesSource("api");
+      }
     } catch {
-      // Keep local times — no action needed
+      // API unavailable or returned bad data — adhan library times remain active
     }
   }
 

@@ -35,36 +35,74 @@ const ALADHAN_METHOD: Record<string, number> = {
   Singapore: 11,
 };
 
+/**
+ * Returns the UTC offset of `timezone` at the current moment, in milliseconds.
+ * Uses Intl.DateTimeFormat.formatToParts — works on V8, JSC, and Hermes alike.
+ * Positive = east of UTC (e.g. Asia/Riyadh = +10_800_000), negative = west.
+ */
 function getTimezoneOffsetMs(timezone: string): number {
   try {
     const now = new Date();
-    const utcDate = new Date(now.toLocaleString("en-US", { timeZone: "UTC" }));
-    const tzDate = new Date(now.toLocaleString("en-US", { timeZone: timezone }));
-    return tzDate.getTime() - utcDate.getTime();
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    const parts: Record<string, string> = {};
+    fmt.formatToParts(now).forEach(p => { parts[p.type] = p.value; });
+    let h = parseInt(parts["hour"] ?? "0", 10);
+    if (h === 24) h = 0; // midnight edge-case
+    const tzAsUTC = Date.UTC(
+      parseInt(parts["year"]   ?? "2000", 10),
+      parseInt(parts["month"]  ?? "1",    10) - 1,
+      parseInt(parts["day"]    ?? "1",    10),
+      h,
+      parseInt(parts["minute"] ?? "0", 10),
+      parseInt(parts["second"] ?? "0", 10),
+    );
+    return tzAsUTC - now.getTime();
   } catch {
-    return 0;
+    // last-resort: device local offset
+    return -new Date().getTimezoneOffset() * 60_000;
   }
 }
 
+/**
+ * Parses an Aladhan API time string (e.g. "04:13" or "04:13 (+05:30)")
+ * and the date string "YYYY-MM-DD" into a proper UTC-based Date object.
+ */
 function parseAladhanTime(timeStr: string, dateStr: string, timezone: string): Date {
-  // API may return "03:50 (+05:30)" — strip everything after the first space
+  // Strip any trailing timezone annotation (e.g. " (+05:30)" or " (PKT)")
   const base = (timeStr ?? "00:00").split(" ")[0].trim();
-  const parts = base.split(":");
-  const h = parseInt(parts[0] ?? "0", 10);
-  const m = parseInt(parts[1] ?? "0", 10);
-  if (isNaN(h) || isNaN(m)) {
-    return new Date(); // safe fallback
+  const [hPart, mPart] = base.split(":");
+  const h = parseInt(hPart ?? "0", 10);
+  const m = parseInt(mPart ?? "0", 10);
+
+  if (isNaN(h) || isNaN(m) || h > 23 || m > 59) {
+    return new Date(); // safe current-time fallback
   }
-  const offsetMs = getTimezoneOffsetMs(timezone);
-  const midnightUTC = new Date(`${dateStr}T00:00:00Z`);
-  if (isNaN(midnightUTC.getTime())) {
-    // fallback: use today's midnight UTC
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
-    const fallbackMidnight = new Date(`${todayStr}T00:00:00Z`);
-    return new Date(fallbackMidnight.getTime() - offsetMs + (h * 3600 + m * 60) * 1000);
-  }
-  return new Date(midnightUTC.getTime() - offsetMs + (h * 3600 + m * 60) * 1000);
+
+  // Parse dateStr "YYYY-MM-DD" into components
+  const [y, mo, d] = (dateStr || new Date().toISOString().split("T")[0])
+    .split("-")
+    .map(Number);
+
+  if (!y || !mo || !d) return new Date();
+
+  const midnightUTC = Date.UTC(y, mo - 1, d); // UTC midnight of that calendar date
+  const offsetMs    = getTimezoneOffsetMs(timezone); // positive = east
+
+  // local midnight in UTC = UTC midnight − offset
+  // prayer time in UTC     = local midnight in UTC + (h * 3600 + m * 60) seconds
+  const result = new Date(midnightUTC - offsetMs + (h * 3600 + m * 60) * 1000);
+
+  // Final sanity check
+  return isNaN(result.getTime()) ? new Date() : result;
 }
 
 // ─── API: Aladhan prayer times ─────────────────────────────────────────────
@@ -100,20 +138,36 @@ export async function fetchPrayerTimesFromAladhan(
     return parseAladhanTime(timings[key] ?? "00:00", dateStr, tz);
   }
 
-  // Compute midnight & last third from fajr/isha
-  const fajr = pt("Fajr");
+  const fajr    = pt("Fajr");
   const sunrise = pt("Sunrise");
-  const dhuhr = pt("Dhuhr");
-  const asr = pt("Asr");
+  const dhuhr   = pt("Dhuhr");
+  const asr     = pt("Asr");
   const maghrib = pt("Maghrib");
-  const isha = pt("Isha");
+  const isha    = pt("Isha");
+
+  // Reject entirely if any core time is invalid
+  const core = [fajr, sunrise, dhuhr, asr, maghrib, isha];
+  if (core.some(d => isNaN(d.getTime()))) {
+    throw new Error("Aladhan: one or more times parsed as Invalid Date");
+  }
+
+  // Sanity-check ordering: fajr < sunrise < dhuhr < asr < maghrib < isha
+  if (!(fajr < sunrise && sunrise < dhuhr && dhuhr < asr && asr < maghrib && maghrib < isha)) {
+    throw new Error("Aladhan: prayer time ordering is wrong — likely a timezone parsing error");
+  }
 
   // Midnight = midpoint between Maghrib and Fajr (next day)
-  const nextFajr = new Date(fajr.getTime() + 86400000);
-  const midnight = new Date((maghrib.getTime() + nextFajr.getTime()) / 2);
+  const nextFajr  = new Date(fajr.getTime() + 86_400_000);
+  const midnight  = new Date((maghrib.getTime() + nextFajr.getTime()) / 2);
   const lastThird = new Date(maghrib.getTime() + (nextFajr.getTime() - maghrib.getTime()) * (2 / 3));
 
   return { fajr, sunrise, dhuhr, asr, maghrib, isha, midnight, lastThird };
+}
+
+/** Returns true when all fields in a DailyPrayerTimes object are valid Dates. */
+export function isPrayerTimesValid(t: DailyPrayerTimes): boolean {
+  return [t.fajr, t.sunrise, t.dhuhr, t.asr, t.maghrib, t.isha]
+    .every(d => d instanceof Date && !isNaN(d.getTime()));
 }
 
 // ─── API: Aladhan qibla direction ──────────────────────────────────────────
