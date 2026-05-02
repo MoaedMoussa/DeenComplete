@@ -1,7 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
-import { getPrayerTimes, DailyPrayerTimes, DEFAULT_PRAYER_TIMES } from "@/data/prayers";
+import {
+  getPrayerTimes,
+  fetchPrayerTimesFromAladhan,
+  DailyPrayerTimes,
+  DEFAULT_PRAYER_TIMES,
+} from "@/data/prayers";
 import { City, CITIES } from "@/data/cities";
 
 export interface PrayerLog {
@@ -45,6 +50,7 @@ interface AppContextValue {
   bookmarkedSurahs: number[];
   bookmarkedDuas: string[];
   locationLoading: boolean;
+  prayerTimesSource: "api" | "local";
   updateSettings: (s: Partial<AppSettings>) => void;
   logPrayer: (date: string, prayer: keyof Omit<PrayerLog, "date">, status: "prayed" | "missed" | "late") => void;
   incrementDhikr: (id: string) => void;
@@ -89,6 +95,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [bookmarkedSurahs, setBookmarkedSurahs] = useState<number[]>([]);
   const [bookmarkedDuas, setBookmarkedDuas] = useState<string[]>([]);
   const [locationLoading, setLocationLoading] = useState(true);
+  const [prayerTimesSource, setPrayerTimesSource] = useState<"api" | "local">("local");
 
   useEffect(() => { loadStoredData(); }, []);
 
@@ -122,7 +129,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.setItem("savedLocation", JSON.stringify(loc));
         }
         setLocation(loc);
-        recalcPrayerTimes(loc, loadedSettings);
+        await fetchAndSetPrayerTimes(loc, loadedSettings);
         setLocationLoading(false);
       } else {
         await requestLocation();
@@ -132,34 +139,73 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  function recalcPrayerTimes(loc: LocationInfo, cfg: AppSettings = settings) {
+  // Try aladhan.com API first, fall back to adhan library
+  async function fetchAndSetPrayerTimes(loc: LocationInfo, cfg: AppSettings = settings) {
+    // Immediately set local times so screen isn't empty
+    const localTimes = getPrayerTimes(loc.lat, loc.lng, new Date(), cfg.calculationMethod, cfg.madhab);
+    setPrayerTimes(localTimes);
+    setPrayerTimesSource("local");
+
+    // Then try API for accurate times
     try {
-      const times = getPrayerTimes(loc.lat, loc.lng, new Date(), cfg.calculationMethod, cfg.madhab);
-      setPrayerTimes(times);
+      const apiTimes = await fetchPrayerTimesFromAladhan(
+        loc.lat, loc.lng,
+        cfg.calculationMethod,
+        cfg.madhab,
+        loc.timezone,
+      );
+      setPrayerTimes(apiTimes);
+      setPrayerTimesSource("api");
     } catch {
+      // Keep local times — no action needed
     }
   }
 
+  // Multiple IP geolocation services for better coverage
   async function guessFromIP(): Promise<boolean> {
-    try {
-      const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), 6000);
-      const res = await fetch("https://ipapi.co/json/", { signal: controller.signal });
-      clearTimeout(t);
-      const data = await res.json();
-      if (data && !data.error && data.latitude && data.longitude) {
-        const loc: LocationInfo = {
-          lat: parseFloat(String(data.latitude)),
-          lng: parseFloat(String(data.longitude)),
-          city: data.city ?? "Unknown",
-          country: data.country_name ?? "",
-          timezone: data.timezone ?? getDeviceTimezone(),
-          isGPS: false,
+    const services = [
+      async () => {
+        const r = await fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(6000) });
+        const d = await r.json();
+        if (d?.latitude && !d.error) return {
+          lat: parseFloat(d.latitude), lng: parseFloat(d.longitude),
+          city: d.city ?? "Unknown", country: d.country_name ?? "",
+          timezone: d.timezone ?? getDeviceTimezone(),
         };
-        applyLocation(loc);
-        return true;
+        return null;
+      },
+      async () => {
+        const r = await fetch("https://ip-api.com/json/?fields=lat,lon,city,country,timezone", { signal: AbortSignal.timeout(6000) });
+        const d = await r.json();
+        if (d?.lat && d.status !== "fail") return {
+          lat: d.lat, lng: d.lon,
+          city: d.city ?? "Unknown", country: d.country ?? "",
+          timezone: d.timezone ?? getDeviceTimezone(),
+        };
+        return null;
+      },
+      async () => {
+        const r = await fetch("https://freeipapi.com/api/json", { signal: AbortSignal.timeout(6000) });
+        const d = await r.json();
+        if (d?.latitude) return {
+          lat: d.latitude, lng: d.longitude,
+          city: d.cityName ?? "Unknown", country: d.countryName ?? "",
+          timezone: d.timeZone ?? getDeviceTimezone(),
+        };
+        return null;
+      },
+    ];
+
+    for (const svc of services) {
+      try {
+        const result = await svc();
+        if (result) {
+          applyLocation({ ...result, isGPS: false });
+          return true;
+        }
+      } catch {
+        continue;
       }
-    } catch {
     }
     return false;
   }
@@ -191,7 +237,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setLocation(loc);
     setLocationLoading(false);
     AsyncStorage.setItem("savedLocation", JSON.stringify(loc));
-    recalcPrayerTimes(loc);
+    fetchAndSetPrayerTimes(loc);
   }
 
   async function requestLocation(): Promise<void> {
@@ -260,7 +306,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
 
   function refreshPrayerTimes() {
-    if (location) recalcPrayerTimes(location);
+    if (location) fetchAndSetPrayerTimes(location);
   }
 
   function updateSettings(partial: Partial<AppSettings>) {
@@ -268,7 +314,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updated = { ...prev, ...partial };
       AsyncStorage.setItem("settings", JSON.stringify(updated));
       if ((partial.calculationMethod || partial.madhab) && location) {
-        recalcPrayerTimes(location, updated);
+        fetchAndSetPrayerTimes(location, updated);
       }
       return updated;
     });
@@ -320,7 +366,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       prayerTimes, location, settings, prayerLogs, dhikrCounts,
-      bookmarkedSurahs, bookmarkedDuas, locationLoading,
+      bookmarkedSurahs, bookmarkedDuas, locationLoading, prayerTimesSource,
       updateSettings, logPrayer, incrementDhikr, resetDhikr,
       toggleBookmarkSurah, toggleBookmarkDua, requestLocation,
       setManualCity, refreshPrayerTimes,

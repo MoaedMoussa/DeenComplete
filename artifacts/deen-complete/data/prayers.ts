@@ -21,6 +21,105 @@ export interface DailyPrayerTimes {
   lastThird: Date;
 }
 
+// ─── Aladhan method number mapping ─────────────────────────────────────────
+const ALADHAN_METHOD: Record<string, number> = {
+  MuslimWorldLeague: 3,
+  NorthAmerica: 2,
+  Egyptian: 5,
+  UmmAlQura: 4,
+  Karachi: 1,
+  Gulf: 8,
+  MoonsightingCommittee: 15,
+  Turkey: 13,
+  Tehran: 7,
+  Singapore: 11,
+};
+
+function getTimezoneOffsetMs(timezone: string): number {
+  try {
+    const now = new Date();
+    const utcDate = new Date(now.toLocaleString("en-US", { timeZone: "UTC" }));
+    const tzDate = new Date(now.toLocaleString("en-US", { timeZone: timezone }));
+    return tzDate.getTime() - utcDate.getTime();
+  } catch {
+    return 0;
+  }
+}
+
+function parseAladhanTime(timeStr: string, dateStr: string, timezone: string): Date {
+  const [h, m] = timeStr.split(":").map(Number);
+  const offsetMs = getTimezoneOffsetMs(timezone);
+  const midnightUTC = new Date(`${dateStr}T00:00:00Z`);
+  const localTimeMs = (h * 3600 + m * 60) * 1000;
+  return new Date(midnightUTC.getTime() - offsetMs + localTimeMs);
+}
+
+// ─── API: Aladhan prayer times ─────────────────────────────────────────────
+export async function fetchPrayerTimesFromAladhan(
+  lat: number,
+  lng: number,
+  method = "MuslimWorldLeague",
+  madhab = "Shafi",
+  timezone = "UTC",
+): Promise<DailyPrayerTimes> {
+  const methodNum = ALADHAN_METHOD[method] ?? 3;
+  const school = madhab === "Hanafi" ? 1 : 0;
+  const ts = Math.floor(Date.now() / 1000);
+  const url = `https://api.aladhan.com/v1/timings/${ts}?latitude=${lat}&longitude=${lng}&method=${methodNum}&school=${school}`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  const res = await fetch(url, { signal: controller.signal });
+  clearTimeout(timeout);
+
+  const json = await res.json();
+  if (json.code !== 200) throw new Error("Aladhan API error");
+
+  const { timings, meta, date } = json.data;
+  const tz: string = meta?.timezone || timezone;
+
+  // dateStr from API: "DD-MM-YYYY" → convert to "YYYY-MM-DD"
+  const rawDate: string = date?.gregorian?.date ?? "";
+  const [dd, mm, yyyy] = rawDate.split("-");
+  const dateStr = (yyyy && mm && dd) ? `${yyyy}-${mm}-${dd}` : new Date().toISOString().split("T")[0];
+
+  function pt(key: string): Date {
+    return parseAladhanTime(timings[key] ?? "00:00", dateStr, tz);
+  }
+
+  // Compute midnight & last third from fajr/isha
+  const fajr = pt("Fajr");
+  const sunrise = pt("Sunrise");
+  const dhuhr = pt("Dhuhr");
+  const asr = pt("Asr");
+  const maghrib = pt("Maghrib");
+  const isha = pt("Isha");
+
+  // Midnight = midpoint between Maghrib and Fajr (next day)
+  const nextFajr = new Date(fajr.getTime() + 86400000);
+  const midnight = new Date((maghrib.getTime() + nextFajr.getTime()) / 2);
+  const lastThird = new Date(maghrib.getTime() + (nextFajr.getTime() - maghrib.getTime()) * (2 / 3));
+
+  return { fajr, sunrise, dhuhr, asr, maghrib, isha, midnight, lastThird };
+}
+
+// ─── API: Aladhan qibla direction ──────────────────────────────────────────
+export async function fetchQiblaFromAladhan(lat: number, lng: number): Promise<number> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  const res = await fetch(
+    `https://api.aladhan.com/v1/qibla/${lat}/${lng}`,
+    { signal: controller.signal },
+  );
+  clearTimeout(timeout);
+  const json = await res.json();
+  if (json.code !== 200 || typeof json.data?.direction !== "number") {
+    throw new Error("Aladhan qibla API error");
+  }
+  return json.data.direction as number;
+}
+
+// ─── Local adhan library fallback ──────────────────────────────────────────
 function getMethodParams(method: string) {
   switch (method) {
     case "MuslimWorldLeague": return CalculationMethod.MuslimWorldLeague();
@@ -78,10 +177,6 @@ export function getNextPrayerEntry(times: DailyPrayerTimes): PrayerTimeEntry | n
   return entries.find(e => e.time > now) ?? null;
 }
 
-/**
- * Format a Date in the given IANA timezone (e.g. "Asia/Riyadh").
- * Falls back to the device timezone when no timezone is supplied.
- */
 export function formatTime(date: Date, timezone?: string): string {
   try {
     return date.toLocaleTimeString("en-US", {
