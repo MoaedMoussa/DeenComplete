@@ -265,29 +265,52 @@ export default function QuranBookReader() {
                     </View>
                   )}
 
-                  {/* All ayahs flow as continuous Arabic text */}
-                  <Text style={[s.arabicFlow, { fontSize, lineHeight: fontSize * 2.3 }]}>
-                    {group.ayahs.map(a => (
-                      <React.Fragment key={a.number}>
-                        <Text>{a.text} </Text>
-                        <Text style={s.verseMarker}>{`﴿${toArabicNum(a.numberInSurah)}﴾`} </Text>
-                      </React.Fragment>
-                    ))}
-                  </Text>
+                  {/* All ayahs flow as continuous Arabic text.
+                      The alquran.cloud API bundles the bismillah as a prefix on verse 1
+                      (e.g. "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ الٓمٓ"). Strip those
+                      first 4 words so they don't duplicate the header we already show. */}
+                  {(() => {
+                    const isBismillahSurah = group.surahNum !== 1 && group.surahNum !== 9;
+                    const displayAyahs = group.ayahs.map((a, idx) => {
+                      if (idx === 0 && a.numberInSurah === 1 && isBismillahSurah) {
+                        const tokens = a.text.trim().split(/\s+/);
+                        const firstBare = tokens[0]?.replace(/[\u064B-\u065F\u0610-\u061A\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]/g, "") ?? "";
+                        if (firstBare.startsWith("\u0628\u0633\u0645") && tokens.length >= 4) {
+                          // strip the 4-word bismillah: بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
+                          const stripped = tokens.slice(4).join(" ").trim();
+                          if (!stripped) return null; // rare: entire verse was only bismillah
+                          return { ...a, text: stripped };
+                        }
+                      }
+                      return a;
+                    }).filter((a): a is PageAyah => a !== null);
 
-                  {/* Translation */}
-                  {showTranslation && (
-                    <View style={s.transBlock}>
-                      {group.ayahs.map(a => (
-                        <View key={a.number} style={s.transRow}>
-                          <View style={s.transNum}>
-                            <Text style={s.transNumTxt}>{a.numberInSurah}</Text>
+                    return (
+                      <>
+                        <Text style={[s.arabicFlow, { fontSize, lineHeight: fontSize * 2.3 }]}>
+                          {displayAyahs.map(a => (
+                            <React.Fragment key={a.number}>
+                              <Text>{a.text} </Text>
+                              <Text style={s.verseMarker}>{`﴿${toArabicNum(a.numberInSurah)}﴾`} </Text>
+                            </React.Fragment>
+                          ))}
+                        </Text>
+
+                        {showTranslation && displayAyahs.length > 0 && (
+                          <View style={s.transBlock}>
+                            {displayAyahs.map(a => (
+                              <View key={a.number} style={s.transRow}>
+                                <View style={s.transNum}>
+                                  <Text style={s.transNumTxt}>{a.numberInSurah}</Text>
+                                </View>
+                                <Text style={s.transTxt}>{a.translation}</Text>
+                              </View>
+                            ))}
                           </View>
-                          <Text style={s.transTxt}>{a.translation}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {gi < groups.length - 1 && <View style={s.groupDivider} />}
                 </View>

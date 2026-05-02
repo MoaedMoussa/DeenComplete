@@ -47,11 +47,24 @@ function getTimezoneOffsetMs(timezone: string): number {
 }
 
 function parseAladhanTime(timeStr: string, dateStr: string, timezone: string): Date {
-  const [h, m] = timeStr.split(":").map(Number);
+  // API may return "03:50 (+05:30)" — strip everything after the first space
+  const base = (timeStr ?? "00:00").split(" ")[0].trim();
+  const parts = base.split(":");
+  const h = parseInt(parts[0] ?? "0", 10);
+  const m = parseInt(parts[1] ?? "0", 10);
+  if (isNaN(h) || isNaN(m)) {
+    return new Date(); // safe fallback
+  }
   const offsetMs = getTimezoneOffsetMs(timezone);
   const midnightUTC = new Date(`${dateStr}T00:00:00Z`);
-  const localTimeMs = (h * 3600 + m * 60) * 1000;
-  return new Date(midnightUTC.getTime() - offsetMs + localTimeMs);
+  if (isNaN(midnightUTC.getTime())) {
+    // fallback: use today's midnight UTC
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
+    const fallbackMidnight = new Date(`${todayStr}T00:00:00Z`);
+    return new Date(fallbackMidnight.getTime() - offsetMs + (h * 3600 + m * 60) * 1000);
+  }
+  return new Date(midnightUTC.getTime() - offsetMs + (h * 3600 + m * 60) * 1000);
 }
 
 // ─── API: Aladhan prayer times ─────────────────────────────────────────────

@@ -10,6 +10,32 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/contexts/AppContext";
 import { getQiblaDirection, getDistanceToMakkah, fetchQiblaFromAladhan } from "@/data/prayers";
 
+const RAD = Math.PI / 180;
+
+function tiltCompensatedHeading(
+  mx: number, my: number, mz: number,
+  ax: number, ay: number, az: number,
+): number {
+  const norm = Math.sqrt(ax * ax + ay * ay + az * az) || 1;
+  const nx = ax / norm;
+  const ny = ay / norm;
+  const nz = az / norm;
+
+  const pitch = Math.asin(Math.max(-1, Math.min(1, -nx)));
+  const roll = Math.atan2(ny, nz < 0 ? -Math.abs(nz) : nz);
+
+  const cosPitch = Math.cos(pitch);
+  const sinPitch = Math.sin(pitch);
+  const cosRoll = Math.cos(roll);
+  const sinRoll = Math.sin(roll);
+
+  const Bx = mx * cosPitch + mz * sinPitch;
+  const By = mx * sinRoll * sinPitch + my * cosRoll - mz * sinRoll * cosPitch;
+
+  const heading = (Math.atan2(-By, Bx) / RAD + 360) % 360;
+  return heading;
+}
+
 export default function QiblaScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -28,8 +54,9 @@ export default function QiblaScreen() {
 
   const headingAnim = useRef(new Animated.Value(0)).current;
   const prevHeading = useRef(0);
+  const magRef = useRef({ x: 0, y: 0, z: 0 });
+  const accRef = useRef({ x: 0, y: 0.81, z: 0.59 }); // default: phone tilted ~54°
 
-  // Fetch accurate qibla direction from aladhan.com API
   useEffect(() => {
     if (!location) return;
     setApiLoading(true);
@@ -38,7 +65,7 @@ export default function QiblaScreen() {
       .catch(() => { setApiLoading(false); });
   }, [lat, lng]);
 
-  function smoothHeading(newHeading: number) {
+  function applyHeading(newHeading: number) {
     let diff = newHeading - prevHeading.current;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
@@ -47,76 +74,116 @@ export default function QiblaScreen() {
     setCompassHeading(newHeading);
     Animated.timing(headingAnim, {
       toValue: target,
-      duration: 180,
+      duration: 150,
       easing: Easing.out(Easing.quad),
       useNativeDriver: false,
     }).start();
   }
 
   useEffect(() => {
-    let cleanup: (() => void) | null = null;
+    let magSub: any = null;
+    let accSub: any = null;
 
-    async function startCompass() {
-      if (Platform.OS === "web") {
-        if (typeof window !== "undefined" && "DeviceOrientationEvent" in window) {
-          const handler = (e: DeviceOrientationEvent) => {
-            const heading = (e as any).webkitCompassHeading ?? (360 - (e.alpha ?? 0));
-            smoothHeading((heading + 360) % 360);
-            setSensorStatus("active");
-          };
-          window.addEventListener("deviceorientationabsolute", handler as any, true);
-          window.addEventListener("deviceorientation", handler as any, true);
-          setSensorStatus("unavailable");
-          cleanup = () => {
-            window.removeEventListener("deviceorientationabsolute", handler as any);
-            window.removeEventListener("deviceorientation", handler as any);
-          };
-        } else {
-          setSensorStatus("unavailable");
-        }
-        return;
-      }
+    function computeHeading() {
+      const { x: mx, y: my, z: mz } = magRef.current;
+      const { x: ax, y: ay, z: az } = accRef.current;
+      const h = tiltCompensatedHeading(mx, my, mz, ax, ay, az);
+      applyHeading(h);
+      setSensorStatus("active");
+      const magStrength = Math.sqrt(mx * mx + my * my + mz * mz);
+      setAccuracy(magStrength > 40 ? "high" : magStrength > 20 ? "medium" : "low");
+    }
 
+    async function startNative() {
       try {
-        const { Magnetometer } = await import("expo-sensors") as any;
-        const available = await Magnetometer.isAvailableAsync();
-        if (!available) { setSensorStatus("unavailable"); return; }
-        Magnetometer.setUpdateInterval(100);
-        const sub = Magnetometer.addListener((data: { x: number; y: number; z: number }) => {
-          const { x, y } = data;
-          let angle = Math.atan2(y, x) * (180 / Math.PI);
-          const heading = ((360 - angle) + 360) % 360;
-          smoothHeading(heading);
-          setSensorStatus("active");
-          const mag = Math.sqrt(x * x + y * y);
-          setAccuracy(mag > 30 ? "high" : mag > 15 ? "medium" : "low");
+        const sensors = await import("expo-sensors") as any;
+        const { Magnetometer, Accelerometer } = sensors;
+
+        const [magOk, accOk] = await Promise.all([
+          Magnetometer.isAvailableAsync(),
+          Accelerometer.isAvailableAsync(),
+        ]);
+
+        if (!magOk) {
+          setSensorStatus("unavailable");
+          return;
+        }
+
+        Magnetometer.setUpdateInterval(80);
+        magSub = Magnetometer.addListener((data: { x: number; y: number; z: number }) => {
+          magRef.current = data;
+          computeHeading();
         });
-        cleanup = () => sub.remove();
+
+        if (accOk) {
+          Accelerometer.setUpdateInterval(80);
+          accSub = Accelerometer.addListener((data: { x: number; y: number; z: number }) => {
+            accRef.current = data;
+          });
+        }
       } catch {
         setSensorStatus("unavailable");
       }
     }
 
-    startCompass();
-    return () => { cleanup?.(); };
+    function startWeb() {
+      if (typeof window === "undefined") {
+        setSensorStatus("unavailable");
+        return () => {};
+      }
+
+      let activated = false;
+
+      const handleOrientation = (e: DeviceOrientationEvent) => {
+        const webkitHeading = (e as any).webkitCompassHeading;
+        if (typeof webkitHeading === "number" && !isNaN(webkitHeading)) {
+          applyHeading(webkitHeading);
+          setSensorStatus("active");
+          activated = true;
+        } else if (typeof e.alpha === "number" && !isNaN(e.alpha)) {
+          applyHeading((360 - e.alpha) % 360);
+          setSensorStatus("active");
+          activated = true;
+        }
+      };
+
+      window.addEventListener("deviceorientationabsolute", handleOrientation as any, true);
+      window.addEventListener("deviceorientation", handleOrientation as any, true);
+
+      // If no events fire within 2 seconds, mark unavailable
+      const timer = setTimeout(() => {
+        if (!activated) setSensorStatus("unavailable");
+      }, 2000);
+
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener("deviceorientationabsolute", handleOrientation as any);
+        window.removeEventListener("deviceorientation", handleOrientation as any);
+      };
+    }
+
+    let webCleanup: (() => void) | undefined;
+    if (Platform.OS === "web") {
+      webCleanup = startWeb();
+    } else {
+      startNative();
+    }
+
+    return () => {
+      magSub?.remove();
+      accSub?.remove();
+      webCleanup?.();
+    };
   }, []);
 
   const relativeQibla = (qiblaAngle - compassHeading + 360) % 360;
 
-  const compassRotation = headingAnim.interpolate({
-    inputRange: [-3600, 0, 3600],
-    outputRange: ["-3600deg", "0deg", "3600deg"],
-    extrapolate: "extend",
-  });
-
-  // Negate so compass rose counter-rotates as you turn
   const compassRotationNeg = headingAnim.interpolate({
     inputRange: [-3600, 0, 3600],
     outputRange: ["3600deg", "0deg", "-3600deg"],
     extrapolate: "extend",
   });
 
-  const needleRotation = `${relativeQibla}deg`;
   const accuracyColor = accuracy === "high" ? "#22C55E" : accuracy === "medium" ? "#F59E0B" : "#EF4444";
 
   return (
@@ -128,7 +195,6 @@ export default function QiblaScreen() {
         headerTintColor: "#fff",
       }} />
 
-      {/* Location bar */}
       <View style={[s.locBar, { backgroundColor: "#1A5C3A" }]}>
         <Feather name="map-pin" size={13} color="#C8973A" />
         <Text style={s.locCity}>{location?.city ?? "Unknown Location"}</Text>
@@ -145,11 +211,9 @@ export default function QiblaScreen() {
       </View>
 
       <View style={s.body}>
-        {/* Compass */}
         <View style={s.compassOuter}>
-          {/* Rotating compass rose */}
+          {/* Rotating compass rose — counter-rotates as device turns */}
           <Animated.View style={[s.compassRose, { transform: [{ rotate: compassRotationNeg }] }]}>
-            {/* Cardinal directions */}
             {[
               { dir: "N", angle: 0, isNorth: true },
               { dir: "NE", angle: 45 },
@@ -160,7 +224,7 @@ export default function QiblaScreen() {
               { dir: "W", angle: 270 },
               { dir: "NW", angle: 315 },
             ].map(({ dir, angle, isNorth }) => {
-              const rad = (angle - 90) * (Math.PI / 180);
+              const rad = (angle - 90) * RAD;
               const r = 118;
               return (
                 <View key={dir} style={[s.cardinalWrap, {
@@ -177,10 +241,9 @@ export default function QiblaScreen() {
               );
             })}
 
-            {/* Degree tick marks */}
             {Array.from({ length: 72 }, (_, i) => {
               const angle = i * 5;
-              const rad = (angle - 90) * (Math.PI / 180);
+              const rad = (angle - 90) * RAD;
               const isMajor = angle % 90 === 0;
               const isMinor = angle % 45 === 0;
               const inner = isMajor ? 96 : isMinor ? 100 : 104;
@@ -205,23 +268,23 @@ export default function QiblaScreen() {
             })}
           </Animated.View>
 
-          {/* Static Qibla needle — always points toward Kaaba */}
+          {/* Qibla needle — always points to Kaaba */}
           <View style={s.needleLayer} pointerEvents="none">
-            <View style={[s.needleContainer, { transform: [{ rotate: needleRotation }] }]}>
+            <View style={[s.needleContainer, { transform: [{ rotate: `${relativeQibla}deg` }] }]}>
               <Text style={s.kaabaEmoji}>🕋</Text>
               <View style={[s.needleUp, { backgroundColor: "#C8973A" }]} />
               <View style={[s.needleDown, { backgroundColor: "#C8973A40" }]} />
             </View>
           </View>
 
-          {/* Center hub */}
+          {/* Centre hub */}
           <View style={[s.hub, { backgroundColor: "#1A5C3A" }]}>
             <Text style={s.hubDeg}>{Math.round(relativeQibla)}°</Text>
             <Text style={s.hubLabel}>Qibla</Text>
           </View>
         </View>
 
-        {/* Source badge */}
+        {/* API source badge */}
         <View style={[s.sourceBadge, { backgroundColor: apiQibla != null ? "#1A5C3A18" : colors.card }]}>
           <Feather
             name={apiQibla != null ? "check-circle" : "wifi-off"}
@@ -230,8 +293,8 @@ export default function QiblaScreen() {
           />
           <Text style={[s.sourceTxt, { color: apiQibla != null ? "#1A5C3A" : colors.mutedForeground }]}>
             {apiQibla != null
-              ? `Direction verified via Aladhan API · ${qiblaAngle.toFixed(2)}° from North`
-              : "Using local calculation · Angle: " + localQibla.toFixed(2) + "°"}
+              ? `Verified via Aladhan API · ${qiblaAngle.toFixed(2)}° from North`
+              : `Local calculation · ${localQibla.toFixed(2)}° from North`}
           </Text>
         </View>
 
@@ -241,8 +304,8 @@ export default function QiblaScreen() {
             <View style={[s.statusDot, { backgroundColor: accuracyColor }]} />
             <Text style={[s.statusTxt, { color: accuracyColor }]}>
               {accuracy === "low"
-                ? "Compass accuracy low — move in a figure-8 to calibrate"
-                : `Compass accuracy: ${accuracy}`}
+                ? "Compass accuracy low — move phone in a figure-8 to calibrate"
+                : `Compass ${accuracy} accuracy · heading ${Math.round(compassHeading)}°`}
             </Text>
           </View>
         )}
@@ -251,13 +314,19 @@ export default function QiblaScreen() {
             <Feather name="info" size={14} color="#C8973A" />
             <Text style={[s.statusTxt, { color: "#C8973A" }]}>
               {Platform.OS === "web"
-                ? "Live compass requires a physical device. Qibla angle is calculated from your coordinates."
-                : "Compass sensor unavailable. Direction is calculated from GPS coordinates."}
+                ? "Live compass requires a physical device. The Qibla angle shown is accurate for your location."
+                : "Compass sensor unavailable. Direction calculated from GPS coordinates."}
             </Text>
           </View>
         )}
+        {sensorStatus === "loading" && (
+          <View style={[s.statusBadge, { backgroundColor: colors.muted }]}>
+            <ActivityIndicator size="small" color={colors.mutedForeground} />
+            <Text style={[s.statusTxt, { color: colors.mutedForeground }]}>Starting compass…</Text>
+          </View>
+        )}
 
-        {/* Info cards */}
+        {/* Info rows */}
         <View style={[s.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {[
             { icon: "navigation", label: "Qibla Direction", value: `${qiblaAngle.toFixed(1)}° from North` },
@@ -277,7 +346,7 @@ export default function QiblaScreen() {
         </View>
 
         <Text style={[s.tip, { color: colors.mutedForeground }]}>
-          Keep your phone flat and horizontal. Move in a figure-8 pattern to calibrate.
+          Hold phone flat. Move in a figure-8 to calibrate the compass.
         </Text>
       </View>
     </View>
@@ -309,7 +378,7 @@ const s = StyleSheet.create({
   },
   cardinalWrap: { position: "absolute", justifyContent: "center", alignItems: "center" },
   cardinalTxt: { fontFamily: "Inter_600SemiBold", fontSize: 12 },
-  northTxt: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#EF4444" },
+  northTxt: { fontFamily: "Inter_700Bold", fontSize: 15 },
   needleLayer: {
     position: "absolute", width: "100%", height: "100%",
     justifyContent: "center", alignItems: "center",
