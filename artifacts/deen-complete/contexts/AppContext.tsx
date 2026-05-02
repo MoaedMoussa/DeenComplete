@@ -40,6 +40,7 @@ export interface LocationInfo {
   country: string;
   timezone: string;
   isGPS: boolean;
+  _v?: number; // cache version — bump to force re-detection on old snapshots
 }
 
 interface AppContextValue {
@@ -64,7 +65,7 @@ interface AppContextValue {
 }
 
 const defaultSettings: AppSettings = {
-  calculationMethod: "MuslimWorldLeague",
+  calculationMethod: "UmmAlQura",
   madhab: "Shafi",
   notifications: true,
   notificationsEnabled: true,
@@ -124,6 +125,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (storedLocation) {
         const loc: LocationInfo = JSON.parse(storedLocation);
+
+        // Version 1 locations were snapped to city centres — coordinates are
+        // imprecise.  Force a fresh GPS fix so prayer times use exact coords.
+        if (!loc._v || loc._v < 2) {
+          AsyncStorage.removeItem("savedLocation");
+          await requestLocation();
+          return;
+        }
+
         if (!loc.timezone) {
           const cityMatch = CITIES.find(c => c.name === loc.city && c.country === loc.country);
           loc.timezone = cityMatch?.timezone ?? getDeviceTimezone();
@@ -241,10 +251,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
 
   function applyLocation(loc: LocationInfo) {
-    setLocation(loc);
+    const stamped: LocationInfo = { ...loc, _v: 2 };
+    setLocation(stamped);
     setLocationLoading(false);
-    AsyncStorage.setItem("savedLocation", JSON.stringify(loc));
-    fetchAndSetPrayerTimes(loc);
+    AsyncStorage.setItem("savedLocation", JSON.stringify(stamped));
+    fetchAndSetPrayerTimes(stamped);
   }
 
   // Use Nominatim (OpenStreetMap) to get a district-level display name.
