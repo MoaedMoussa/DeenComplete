@@ -10,6 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
+import { useApp } from "@/contexts/AppContext";
 import { allSurahsList, SURAH_START_PAGE } from "@/data/quran";
 
 const { width: SCREEN_W } = Dimensions.get("window");
@@ -24,6 +25,7 @@ interface PageAyah {
   numberInSurah: number;
   text: string;
   translation: string;
+  transliteration: string;
   surahNumber: number;
   surahName: string;
   surahNameAr: string;
@@ -38,7 +40,8 @@ async function fetchPage(pageNum: number, edition: string): Promise<PageAyah[]> 
   const key = `${pageNum}_${edition}`;
   if (pageCache.has(key)) return pageCache.get(key)!;
 
-  const storageKey = `qpage_${key}`;
+  // v2 cache includes transliteration — old entries without it are skipped
+  const storageKey = `qpage_v2_${key}`;
   try {
     const cached = await AsyncStorage.getItem(storageKey);
     if (cached) {
@@ -48,12 +51,14 @@ async function fetchPage(pageNum: number, edition: string): Promise<PageAyah[]> 
     }
   } catch {}
 
-  const [arRes, trRes] = await Promise.all([
+  // Fetch Arabic, chosen translation, and transliteration in parallel
+  const [arRes, trRes, tlRes] = await Promise.all([
     fetch(`https://api.alquran.cloud/v1/page/${pageNum}/quran-uthmani`),
     fetch(`https://api.alquran.cloud/v1/page/${pageNum}/${edition}`),
+    fetch(`https://api.alquran.cloud/v1/page/${pageNum}/en.transliteration`),
   ]);
   if (!arRes.ok) throw new Error("API error");
-  const [ar, tr] = await Promise.all([arRes.json(), trRes.json()]);
+  const [ar, tr, tl] = await Promise.all([arRes.json(), trRes.json(), tlRes.json()]);
   if (ar.code !== 200) throw new Error("API error");
 
   const ayahs: PageAyah[] = (ar.data.ayahs as any[]).map((a, i) => ({
@@ -61,6 +66,7 @@ async function fetchPage(pageNum: number, edition: string): Promise<PageAyah[]> 
     numberInSurah: a.numberInSurah,
     text: a.text,
     translation: (tr.data?.ayahs as any[])?.[i]?.text ?? "",
+    transliteration: (tl.data?.ayahs as any[])?.[i]?.text ?? "",
     surahNumber: a.surah.number,
     surahName: a.surah.englishName,
     surahNameAr: a.surah.name,
@@ -85,6 +91,7 @@ export default function QuranBookReader() {
   const { surahId } = useLocalSearchParams<{ surahId: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { settings, updateSettings } = useApp();
 
   const id = parseInt(surahId ?? "1", 10);
   const startPage = SURAH_START_PAGE[id] ?? 1;
@@ -93,10 +100,8 @@ export default function QuranBookReader() {
   const [pageData, setPageData] = useState<PageAyah[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showTranslation, setShowTranslation] = useState(true);
-  const [edition, setEdition] = useState("en.sahih");
+  const [edition, setEdition] = useState(settings.translationEdition ?? "en.sahih");
   const [showSettings, setShowSettings] = useState(false);
-  const [fontSize, setFontSize] = useState(22);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const isAnimating = useRef(false);
@@ -104,6 +109,7 @@ export default function QuranBookReader() {
   currentPageRef.current = currentPage;
 
   const surah = allSurahsList.find(s => s.id === id);
+  const fontSize = settings.arabicFontSize;
 
   const loadPage = useCallback(async (page: number) => {
     setLoading(true);
@@ -172,6 +178,8 @@ export default function QuranBookReader() {
   }
 
   const juzNum = pageData[0]?.juz ?? "–";
+  const showTr = settings.showTranslation;
+  const showTl = settings.showTransliteration;
 
   return (
     <View style={[s.root, { backgroundColor: colors.background }]}>
@@ -183,10 +191,32 @@ export default function QuranBookReader() {
           headerTintColor: "#fff",
           headerRight: () => (
             <View style={{ flexDirection: "row", gap: 18, paddingRight: 4 }}>
-              <TouchableOpacity onPress={() => setShowTranslation(v => !v)}>
-                <Feather name="type" size={20} color={showTranslation ? "#FFD700" : "rgba(255,255,255,0.5)"} />
+              {/* Transliteration toggle */}
+              <TouchableOpacity
+                onPress={() => updateSettings({ showTransliteration: !settings.showTransliteration })}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Feather
+                  name="align-left"
+                  size={20}
+                  color={settings.showTransliteration ? "#FFD700" : "rgba(255,255,255,0.4)"}
+                />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowSettings(true)}>
+              {/* Translation toggle */}
+              <TouchableOpacity
+                onPress={() => updateSettings({ showTranslation: !settings.showTranslation })}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Feather
+                  name="type"
+                  size={20}
+                  color={settings.showTranslation ? "#FFD700" : "rgba(255,255,255,0.4)"}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowSettings(true)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <Feather name="settings" size={20} color="rgba(255,255,255,0.75)" />
               </TouchableOpacity>
             </View>
@@ -245,7 +275,6 @@ export default function QuranBookReader() {
 
               {groups.map((group, gi) => (
                 <View key={`${group.surahNum}_${gi}`}>
-                  {/* Surah header when first ayah of surah appears on this page */}
                   {group.ayahs[0].numberInSurah === 1 && (
                     <View style={s.surahHead}>
                       <View style={s.surahHeadBox}>
@@ -265,10 +294,6 @@ export default function QuranBookReader() {
                     </View>
                   )}
 
-                  {/* All ayahs flow as continuous Arabic text.
-                      The alquran.cloud API bundles the bismillah as a prefix on verse 1
-                      (e.g. "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ الٓمٓ"). Strip those
-                      first 4 words so they don't duplicate the header we already show. */}
                   {(() => {
                     const isBismillahSurah = group.surahNum !== 1 && group.surahNum !== 9;
                     const displayAyahs = group.ayahs.map((a, idx) => {
@@ -276,9 +301,8 @@ export default function QuranBookReader() {
                         const tokens = a.text.trim().split(/\s+/);
                         const firstBare = tokens[0]?.replace(/[\u064B-\u065F\u0610-\u061A\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]/g, "") ?? "";
                         if (firstBare.startsWith("\u0628\u0633\u0645") && tokens.length >= 4) {
-                          // strip the 4-word bismillah: بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
                           const stripped = tokens.slice(4).join(" ").trim();
-                          if (!stripped) return null; // rare: entire verse was only bismillah
+                          if (!stripped) return null;
                           return { ...a, text: stripped };
                         }
                       }
@@ -287,6 +311,7 @@ export default function QuranBookReader() {
 
                     return (
                       <>
+                        {/* Arabic text */}
                         <Text style={[s.arabicFlow, { fontSize, lineHeight: fontSize * 2.3 }]}>
                           {displayAyahs.map(a => (
                             <React.Fragment key={a.number}>
@@ -296,10 +321,25 @@ export default function QuranBookReader() {
                           ))}
                         </Text>
 
-                        {showTranslation && displayAyahs.length > 0 && (
+                        {/* Transliteration block */}
+                        {showTl && displayAyahs.length > 0 && (
                           <View style={s.transBlock}>
                             {displayAyahs.map(a => (
-                              <View key={a.number} style={s.transRow}>
+                              <View key={`tl_${a.number}`} style={s.transRow}>
+                                <View style={s.transNum}>
+                                  <Text style={s.transNumTxt}>{a.numberInSurah}</Text>
+                                </View>
+                                <Text style={s.translitTxt}>{a.transliteration}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+
+                        {/* Translation block */}
+                        {showTr && displayAyahs.length > 0 && (
+                          <View style={[s.transBlock, showTl && s.transBlockNoTop]}>
+                            {displayAyahs.map(a => (
+                              <View key={`tr_${a.number}`} style={s.transRow}>
                                 <View style={s.transNum}>
                                   <Text style={s.transNumTxt}>{a.numberInSurah}</Text>
                                 </View>
@@ -367,14 +407,14 @@ export default function QuranBookReader() {
             <View style={s.fontRow}>
               <TouchableOpacity
                 style={[s.fontBtn, { backgroundColor: colors.muted }]}
-                onPress={() => setFontSize(f => Math.max(16, f - 2))}
+                onPress={() => updateSettings({ arabicFontSize: Math.max(16, fontSize - 2) })}
               >
                 <Feather name="minus" size={16} color={colors.foreground} />
               </TouchableOpacity>
               <Text style={[s.fontVal, { color: colors.foreground }]}>{fontSize}px</Text>
               <TouchableOpacity
                 style={[s.fontBtn, { backgroundColor: colors.muted }]}
-                onPress={() => setFontSize(f => Math.min(36, f + 2))}
+                onPress={() => updateSettings({ arabicFontSize: Math.min(36, fontSize + 2) })}
               >
                 <Feather name="plus" size={16} color={colors.foreground} />
               </TouchableOpacity>
@@ -398,7 +438,11 @@ export default function QuranBookReader() {
               <TouchableOpacity
                 key={e.id}
                 style={[s.edRow, { borderColor: colors.border }]}
-                onPress={() => { setEdition(e.id); setShowSettings(false); }}
+                onPress={() => {
+                  setEdition(e.id);
+                  updateSettings({ translationEdition: e.id });
+                  setShowSettings(false);
+                }}
               >
                 <Text style={[s.edTxt, { color: colors.foreground }]}>{e.label}</Text>
                 {edition === e.id && <Feather name="check" size={16} color="#1A5C3A" />}
@@ -498,6 +542,11 @@ const s = StyleSheet.create({
     paddingTop: 12,
     marginBottom: 8,
   },
+  transBlockNoTop: {
+    borderTopWidth: 0,
+    paddingTop: 0,
+    marginTop: -4,
+  },
   transRow: { flexDirection: "row", gap: 10, marginBottom: 10, alignItems: "flex-start" },
   transNum: {
     width: 24, height: 24, borderRadius: 12,
@@ -506,7 +555,21 @@ const s = StyleSheet.create({
     flexShrink: 0, marginTop: 1,
   },
   transNumTxt: { fontFamily: "Inter_700Bold", fontSize: 10, color: PRIMARY },
-  transTxt: { fontFamily: "Inter_400Regular", fontSize: 12, lineHeight: 18, color: "#555", flex: 1, fontStyle: "italic" },
+  translitTxt: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#888",
+    flex: 1,
+  },
+  transTxt: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#555",
+    flex: 1,
+    fontStyle: "italic",
+  },
 
   groupDivider: { height: 1, backgroundColor: GOLD + "40", marginVertical: 12 },
 

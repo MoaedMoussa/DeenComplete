@@ -6,29 +6,33 @@ import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import { useApp } from "@/contexts/AppContext";
 
 function NativeTabLayout() {
+  const { settings } = useApp();
+  const ar = settings.language === "ar";
+
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="index">
         <Icon sf={{ default: "house", selected: "house.fill" }} />
-        <Label>Home</Label>
+        <Label>{ar ? "الرئيسية" : "Home"}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="quran">
         <Icon sf={{ default: "book", selected: "book.fill" }} />
-        <Label>Quran</Label>
+        <Label>{ar ? "القرآن" : "Quran"}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="prayer">
         <Icon sf={{ default: "sun.max", selected: "sun.max.fill" }} />
-        <Label>Prayer</Label>
+        <Label>{ar ? "الصلاة" : "Prayer"}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="dhikr">
         <Icon sf={{ default: "circle.grid.3x3", selected: "circle.grid.3x3.fill" }} />
-        <Label>Dhikr</Label>
+        <Label>{ar ? "الذكر" : "Dhikr"}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="more">
         <Icon sf={{ default: "square.grid.2x2", selected: "square.grid.2x2.fill" }} />
-        <Label>More</Label>
+        <Label>{ar ? "المزيد" : "More"}</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -40,6 +44,8 @@ function ClassicTabLayout() {
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
+  const { settings } = useApp();
+  const ar = settings.language === "ar";
 
   return (
     <Tabs
@@ -75,35 +81,35 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: ar ? "الرئيسية" : "Home",
           tabBarIcon: ({ color }) => <Feather name="home" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="quran"
         options={{
-          title: "Quran",
+          title: ar ? "القرآن" : "Quran",
           tabBarIcon: ({ color }) => <Feather name="book-open" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="prayer"
         options={{
-          title: "Prayer",
+          title: ar ? "الصلاة" : "Prayer",
           tabBarIcon: ({ color }) => <Feather name="sun" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="dhikr"
         options={{
-          title: "Dhikr",
+          title: ar ? "الذكر" : "Dhikr",
           tabBarIcon: ({ color }) => <Feather name="refresh-cw" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="more"
         options={{
-          title: "More",
+          title: ar ? "المزيد" : "More",
           tabBarIcon: ({ color }) => <Feather name="grid" size={22} color={color} />,
         }}
       />

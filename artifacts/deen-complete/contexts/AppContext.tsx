@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Appearance, Platform } from "react-native";
+import * as Notifications from "expo-notifications";
 import {
   getPrayerTimes,
   fetchPrayerTimesFromAladhan,
@@ -9,6 +10,20 @@ import {
   DEFAULT_PRAYER_TIMES,
 } from "@/data/prayers";
 import { City, CITIES } from "@/data/cities";
+import type { Language } from "@/constants/i18n";
+
+// ── Notification handler — must be set at module level ──────────────────────
+if (Platform.OS !== "web") {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+  } catch {}
+}
 
 export interface PrayerLog {
   date: string;
@@ -31,6 +46,7 @@ export interface AppSettings {
   showTransliteration: boolean;
   showTranslation: boolean;
   translationEdition: string;
+  language: Language;
 }
 
 export interface LocationInfo {
@@ -40,7 +56,7 @@ export interface LocationInfo {
   country: string;
   timezone: string;
   isGPS: boolean;
-  _v?: number; // cache version — bump to force re-detection on old snapshots
+  _v?: number;
 }
 
 interface AppContextValue {
@@ -76,6 +92,7 @@ const defaultSettings: AppSettings = {
   showTransliteration: true,
   showTranslation: true,
   translationEdition: "en.sahih",
+  language: "en",
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -88,13 +105,67 @@ function getDeviceTimezone(): string {
   }
 }
 
-/** Pushes the theme preference into React Native's Appearance API so that
- *  useColorScheme() — used by useColors() — returns the right value. */
 function applyColorScheme(theme: "system" | "light" | "dark") {
   try {
     Appearance.setColorScheme(theme === "system" ? null : theme);
+  } catch {}
+}
+
+// ── Schedule prayer notifications for the next 7 days ───────────────────────
+async function schedulePrayerNotifications(
+  loc: LocationInfo,
+  cfg: AppSettings,
+): Promise<void> {
+  if (Platform.OS === "web") return;
+  try {
+    if (!cfg.notifications) {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+      return;
+    }
+
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    let finalStatus = existing;
+    if (existing !== "granted") {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== "granted") return;
+
+    await Notifications.cancelAllScheduledNotificationsAsync();
+
+    const now = new Date();
+    const prayerDefs = [
+      { key: "fajr" as const,    name: "Fajr",    nameAr: "الفجر" },
+      { key: "dhuhr" as const,   name: "Dhuhr",   nameAr: "الظهر" },
+      { key: "asr" as const,     name: "Asr",     nameAr: "العصر" },
+      { key: "maghrib" as const, name: "Maghrib", nameAr: "المغرب" },
+      { key: "isha" as const,    name: "Isha",    nameAr: "العشاء" },
+    ];
+
+    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+      const targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() + dayOffset);
+      const times = getPrayerTimes(
+        loc.lat, loc.lng, targetDate,
+        cfg.calculationMethod, cfg.madhab,
+      );
+
+      for (const p of prayerDefs) {
+        const pTime = new Date(times[p.key]);
+        if (pTime > now) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: `${p.name} · ${p.nameAr}`,
+              body: "It's time for prayer. الله أكبر",
+              sound: true,
+            },
+            trigger: { date: pTime } as Notifications.DateTriggerInput,
+          });
+        }
+      }
+    }
   } catch {
-    // Older RN builds that don't support setColorScheme — no-op
+    // Notifications unavailable on this device/platform — silently skip
   }
 }
 
@@ -133,14 +204,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (storedSurahs) setBookmarkedSurahs(JSON.parse(storedSurahs));
       if (storedDuas) setBookmarkedDuas(JSON.parse(storedDuas));
 
-      // Apply saved theme so useColorScheme() returns the right value everywhere
       applyColorScheme(loadedSettings.theme ?? "system");
 
       if (storedLocation) {
         const loc: LocationInfo = JSON.parse(storedLocation);
 
-        // Version 1 locations were snapped to city centres — coordinates are
-        // imprecise.  Force a fresh GPS fix so prayer times use exact coords.
         if (!loc._v || loc._v < 2) {
           AsyncStorage.removeItem("savedLocation");
           await requestLocation();
@@ -153,7 +221,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.setItem("savedLocation", JSON.stringify(loc));
         }
         setLocation(loc);
-        await fetchAndSetPrayerTimes(loc, loadedSettings);
+        await fetchAndSetPrayerTimes(loc, loadedSettings, true);
         setLocationLoading(false);
       } else {
         await requestLocation();
@@ -163,17 +231,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Compute prayer times: adhan library first (instant, no network),
-  // then try Aladhan API for verified accuracy.
-  async function fetchAndSetPrayerTimes(loc: LocationInfo, cfg: AppSettings = settings) {
-    // 1. Always start with the local adhan library — guaranteed valid dates, no network
+  async function fetchAndSetPrayerTimes(
+    loc: LocationInfo,
+    cfg: AppSettings = settings,
+    rescheduleNotifications = false,
+  ) {
     const localTimes = getPrayerTimes(loc.lat, loc.lng, new Date(), cfg.calculationMethod, cfg.madhab);
     if (isPrayerTimesValid(localTimes)) {
       setPrayerTimes(localTimes);
       setPrayerTimesSource("local");
     }
 
-    // 2. Try Aladhan API for scholar-verified accuracy
+    if (rescheduleNotifications) {
+      schedulePrayerNotifications(loc, cfg).catch(() => {});
+    }
+
     try {
       const apiTimes = await fetchPrayerTimesFromAladhan(
         loc.lat, loc.lng,
@@ -181,17 +253,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         cfg.madhab,
         loc.timezone,
       );
-      // Only adopt API times if every single date is valid and ordered correctly
       if (isPrayerTimesValid(apiTimes)) {
         setPrayerTimes(apiTimes);
         setPrayerTimesSource("api");
       }
-    } catch {
-      // API unavailable or returned bad data — adhan library times remain active
-    }
+    } catch {}
   }
 
-  // Multiple IP geolocation services for better coverage
   async function guessFromIP(): Promise<boolean> {
     const services = [
       async () => {
@@ -268,11 +336,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setLocation(stamped);
     setLocationLoading(false);
     AsyncStorage.setItem("savedLocation", JSON.stringify(stamped));
-    fetchAndSetPrayerTimes(stamped);
+    fetchAndSetPrayerTimes(stamped, settings, true);
   }
 
-  // Use Nominatim (OpenStreetMap) to get a district-level display name.
-  // Returns e.g. "Khalifa City, Abu Dhabi" or "Downtown, Dubai".
   async function nominatimReverseGeocode(
     lat: number,
     lng: number,
@@ -287,7 +353,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) return null;
       const data = await res.json();
       const addr = data?.address ?? {};
-      // Prefer the most specific district-level label available
       const district =
         addr.suburb || addr.neighbourhood || addr.quarter ||
         addr.residential || addr.district || addr.county || null;
@@ -314,10 +379,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             async pos => {
               const exactLat = pos.coords.latitude;
               const exactLng = pos.coords.longitude;
-              // Use nearest city ONLY for timezone lookup
               const nearest = findNearestCity(exactLat, exactLng);
               const tz = nearest?.timezone ?? getDeviceTimezone();
-              // Try to get district-level name from Nominatim
               const geo = await nominatimReverseGeocode(exactLat, exactLng);
               applyLocation({
                 lat: exactLat,
@@ -352,11 +415,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const exactLat = pos.coords.latitude;
         const exactLng = pos.coords.longitude;
 
-        // Use nearest city ONLY for timezone — never snap coordinates or display name to city center
         const nearest = findNearestCity(exactLat, exactLng);
         const tz = nearest?.timezone ?? getDeviceTimezone();
 
-        // Prefer Expo reverse geocode (works offline) for district-level name
         let displayName = nearest?.name ?? "Current Location";
         let country = nearest?.country ?? "";
         try {
@@ -366,7 +427,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           });
           const g = geocode[0];
           if (g) {
-            // district > subregion > name as the neighborhood identifier
             const district = g.district || g.subregion || g.name || null;
             const cityName = g.city || g.region || "";
             displayName =
@@ -376,7 +436,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             country = g.country || country;
           }
         } catch {
-          // Expo geocode failed — try Nominatim as fallback
           const geo = await nominatimReverseGeocode(exactLat, exactLng);
           if (geo) { displayName = geo.displayName; country = geo.country; }
         }
@@ -397,22 +456,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
 
   function refreshPrayerTimes() {
-    if (location) fetchAndSetPrayerTimes(location);
+    // Timer-driven refresh — don't reschedule notifications on every tick
+    if (location) fetchAndSetPrayerTimes(location, settings, false);
   }
 
   function updateSettings(partial: Partial<AppSettings>) {
-    // Apply theme change immediately — before the state setter runs
     if (partial.theme !== undefined) {
       applyColorScheme(partial.theme);
     }
-    setSettings(prev => {
-      const updated = { ...prev, ...partial };
-      AsyncStorage.setItem("settings", JSON.stringify(updated));
-      if ((partial.calculationMethod || partial.madhab) && location) {
-        fetchAndSetPrayerTimes(location, updated);
-      }
-      return updated;
-    });
+
+    // Build updated settings synchronously — never call side-effects inside setState
+    const updated: AppSettings = { ...settings, ...partial };
+    AsyncStorage.setItem("settings", JSON.stringify(updated));
+    setSettings(updated);
+
+    // Recalculate prayer times when method/madhab changes
+    if (
+      (partial.calculationMethod !== undefined || partial.madhab !== undefined)
+      && location
+    ) {
+      fetchAndSetPrayerTimes(location, updated, true);
+    }
+
+    // Reschedule notifications when notification settings change
+    if (
+      (partial.notifications !== undefined || partial.adhanEnabled !== undefined)
+      && location
+    ) {
+      schedulePrayerNotifications(location, updated).catch(() => {});
+    }
   }
 
   function logPrayer(date: string, prayer: keyof Omit<PrayerLog, "date">, status: "prayed" | "missed" | "late") {

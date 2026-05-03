@@ -15,6 +15,11 @@ const MADHAB_OPTIONS = [
   { id: "Hanafi", name: "Hanafi", desc: "Later Asr time" },
 ];
 
+const LANGUAGE_OPTIONS = [
+  { id: "en" as const, name: "English", desc: "App displayed in English" },
+  { id: "ar" as const, name: "العربية", desc: "التطبيق بالعربية" },
+];
+
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -33,10 +38,35 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={s.container} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-      {/* Prayer Calculation */}
-      <Text style={s.sectionTitle}>Prayer Time Calculation</Text>
+
+      {/* Language */}
+      <Text style={s.sectionTitle}>Language / اللغة</Text>
       <View style={s.card}>
-        <Text style={s.cardSubtitle}>Calculation Method</Text>
+        {LANGUAGE_OPTIONS.map((lang, idx) => (
+          <TouchableOpacity
+            key={lang.id}
+            style={[s.optionRow, idx < LANGUAGE_OPTIONS.length - 1 && s.optionDivider]}
+            onPress={() => { haptic(); updateSettings({ language: lang.id }); }}
+          >
+            <View style={s.optionLeft}>
+              <Text style={s.optionName}>{lang.name}</Text>
+              <Text style={s.optionSub}>{lang.desc}</Text>
+            </View>
+            <View style={[s.radioOuter, settings.language === lang.id && s.radioOuterActive]}>
+              {settings.language === lang.id && <View style={s.radioInner} />}
+            </View>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Prayer Calculation */}
+      <Text style={s.sectionTitle}>
+        {settings.language === "ar" ? "حساب مواقيت الصلاة" : "Prayer Time Calculation"}
+      </Text>
+      <View style={s.card}>
+        <Text style={s.cardSubtitle}>
+          {settings.language === "ar" ? "طريقة الحساب" : "Calculation Method"}
+        </Text>
         {CALCULATION_METHODS.map((method, idx) => (
           <TouchableOpacity
             key={method.id}
@@ -55,7 +85,9 @@ export default function SettingsScreen() {
       </View>
 
       <View style={s.card}>
-        <Text style={s.cardSubtitle}>Asr Madhab</Text>
+        <Text style={s.cardSubtitle}>
+          {settings.language === "ar" ? "مذهب وقت العصر" : "Asr Madhab"}
+        </Text>
         {MADHAB_OPTIONS.map((m, idx) => (
           <TouchableOpacity
             key={m.id}
@@ -74,11 +106,21 @@ export default function SettingsScreen() {
       </View>
 
       {/* Notifications */}
-      <Text style={s.sectionTitle}>Notifications</Text>
+      <Text style={s.sectionTitle}>
+        {settings.language === "ar" ? "الإشعارات" : "Notifications"}
+      </Text>
       <View style={s.card}>
         {[
-          { key: "notifications", label: "Prayer Notifications", sub: "Adhan alerts for each prayer" },
-          { key: "adhanEnabled", label: "Play Adhan", sub: "Audio adhan on notification" },
+          {
+            key: "notifications",
+            label: settings.language === "ar" ? "إشعارات الصلاة" : "Prayer Notifications",
+            sub: settings.language === "ar" ? "تنبيهات الأذان لكل صلاة" : "Adhan alerts for each prayer",
+          },
+          {
+            key: "adhanEnabled",
+            label: settings.language === "ar" ? "تشغيل الأذان" : "Play Adhan",
+            sub: settings.language === "ar" ? "صوت الأذان مع الإشعار" : "Audio adhan on notification",
+          },
         ].map((item, idx, arr) => (
           <View key={item.key} style={[s.switchRow, idx < arr.length - 1 && s.optionDivider]}>
             <View style={s.optionLeft}>
@@ -95,12 +137,22 @@ export default function SettingsScreen() {
         ))}
       </View>
 
-      {/* Display */}
-      <Text style={s.sectionTitle}>Quran Display</Text>
+      {/* Quran Display */}
+      <Text style={s.sectionTitle}>
+        {settings.language === "ar" ? "عرض القرآن" : "Quran Display"}
+      </Text>
       <View style={s.card}>
         {[
-          { key: "showTranslation", label: "Show Translation", sub: "Display English translation" },
-          { key: "showTransliteration", label: "Show Transliteration", sub: "Display Latin script" },
+          {
+            key: "showTranslation",
+            label: settings.language === "ar" ? "إظهار الترجمة" : "Show Translation",
+            sub: settings.language === "ar" ? "عرض الترجمة الإنجليزية" : "Display English translation",
+          },
+          {
+            key: "showTransliteration",
+            label: settings.language === "ar" ? "إظهار النطق اللاتيني" : "Show Transliteration",
+            sub: settings.language === "ar" ? "عرض الكتابة الصوتية" : "Display Latin script pronunciation",
+          },
         ].map((item, idx, arr) => (
           <View key={item.key} style={[s.switchRow, idx < arr.length - 1 && s.optionDivider]}>
             <View style={s.optionLeft}>
@@ -118,8 +170,12 @@ export default function SettingsScreen() {
 
         <View style={s.switchRow}>
           <View style={s.optionLeft}>
-            <Text style={s.optionName}>Arabic Font Size</Text>
-            <Text style={s.optionSub}>Current: {settings.arabicFontSize}px</Text>
+            <Text style={s.optionName}>
+              {settings.language === "ar" ? "حجم الخط العربي" : "Arabic Font Size"}
+            </Text>
+            <Text style={s.optionSub}>
+              {settings.language === "ar" ? `الحجم الحالي: ${settings.arabicFontSize}` : `Current: ${settings.arabicFontSize}px`}
+            </Text>
           </View>
           <View style={s.fontSizeRow}>
             <TouchableOpacity
@@ -139,21 +195,39 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* Theme */}
-      <Text style={s.sectionTitle}>Appearance</Text>
+      {/* Appearance */}
+      <Text style={s.sectionTitle}>
+        {settings.language === "ar" ? "المظهر" : "Appearance"}
+      </Text>
       <View style={s.card}>
-        {(["system", "light", "dark"] as const).map((theme, idx, arr) => (
+        {([
+          {
+            id: "system" as const,
+            name: settings.language === "ar" ? "وضع النظام" : "System Mode",
+            desc: settings.language === "ar" ? "اتباع إعداد الجهاز" : "Follow device setting",
+          },
+          {
+            id: "light" as const,
+            name: settings.language === "ar" ? "الوضع الفاتح" : "Light Mode",
+            desc: settings.language === "ar" ? "فاتح دائمًا" : "Always light",
+          },
+          {
+            id: "dark" as const,
+            name: settings.language === "ar" ? "الوضع الداكن" : "Dark Mode",
+            desc: settings.language === "ar" ? "داكن دائمًا" : "Always dark",
+          },
+        ]).map((theme, idx, arr) => (
           <TouchableOpacity
-            key={theme}
+            key={theme.id}
             style={[s.optionRow, idx < arr.length - 1 && s.optionDivider]}
-            onPress={() => { haptic(); updateSettings({ theme }); }}
+            onPress={() => { haptic(); updateSettings({ theme: theme.id }); }}
           >
             <View style={s.optionLeft}>
-              <Text style={s.optionName}>{theme.charAt(0).toUpperCase() + theme.slice(1)} Mode</Text>
-              <Text style={s.optionSub}>{theme === "system" ? "Follow device setting" : theme === "light" ? "Always light" : "Always dark"}</Text>
+              <Text style={s.optionName}>{theme.name}</Text>
+              <Text style={s.optionSub}>{theme.desc}</Text>
             </View>
-            <View style={[s.radioOuter, settings.theme === theme && s.radioOuterActive]}>
-              {settings.theme === theme && <View style={s.radioInner} />}
+            <View style={[s.radioOuter, settings.theme === theme.id && s.radioOuterActive]}>
+              {settings.theme === theme.id && <View style={s.radioInner} />}
             </View>
           </TouchableOpacity>
         ))}
@@ -165,7 +239,9 @@ export default function SettingsScreen() {
         <Text style={s.aboutArabic}>دِيْن كَامِل</Text>
         <Text style={s.aboutVersion}>Version 1.0.0</Text>
         <Text style={s.aboutDesc}>
-          Your comprehensive all-in-one Islamic companion app. Made with love for the Ummah.
+          {settings.language === "ar"
+            ? "تطبيقك الإسلامي الشامل المصنوع بمحبة للأمة الإسلامية."
+            : "Your comprehensive all-in-one Islamic companion app. Made with love for the Ummah."}
         </Text>
       </View>
 
