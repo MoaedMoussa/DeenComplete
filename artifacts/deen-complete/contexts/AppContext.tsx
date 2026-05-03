@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Platform } from "react-native";
+import { Appearance, Platform } from "react-native";
 import {
   getPrayerTimes,
   fetchPrayerTimesFromAladhan,
@@ -88,6 +88,16 @@ function getDeviceTimezone(): string {
   }
 }
 
+/** Pushes the theme preference into React Native's Appearance API so that
+ *  useColorScheme() — used by useColors() — returns the right value. */
+function applyColorScheme(theme: "system" | "light" | "dark") {
+  try {
+    Appearance.setColorScheme(theme === "system" ? null : theme);
+  } catch {
+    // Older RN builds that don't support setColorScheme — no-op
+  }
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [prayerTimes, setPrayerTimes] = useState<DailyPrayerTimes>(DEFAULT_PRAYER_TIMES);
   const [location, setLocation] = useState<LocationInfo | null>(null);
@@ -122,6 +132,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (storedDhikr) setDhikrCounts(JSON.parse(storedDhikr));
       if (storedSurahs) setBookmarkedSurahs(JSON.parse(storedSurahs));
       if (storedDuas) setBookmarkedDuas(JSON.parse(storedDuas));
+
+      // Apply saved theme so useColorScheme() returns the right value everywhere
+      applyColorScheme(loadedSettings.theme ?? "system");
 
       if (storedLocation) {
         const loc: LocationInfo = JSON.parse(storedLocation);
@@ -388,6 +401,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
 
   function updateSettings(partial: Partial<AppSettings>) {
+    // Apply theme change immediately — before the state setter runs
+    if (partial.theme !== undefined) {
+      applyColorScheme(partial.theme);
+    }
     setSettings(prev => {
       const updated = { ...prev, ...partial };
       AsyncStorage.setItem("settings", JSON.stringify(updated));

@@ -24,8 +24,10 @@ export default function SettingsScreen() {
   const bottomPad = isWeb ? 34 : insets.bottom;
   const s = styles(colors, bottomPad);
 
+  function haptic() { try { Haptics.selectionAsync(); } catch {} }
+
   function toggle(key: keyof typeof settings) {
-    Haptics.selectionAsync();
+    haptic();
     updateSettings({ [key]: !settings[key as keyof typeof settings] });
   }
 
@@ -39,7 +41,7 @@ export default function SettingsScreen() {
           <TouchableOpacity
             key={method.id}
             style={[s.optionRow, idx < CALCULATION_METHODS.length - 1 && s.optionDivider]}
-            onPress={() => { Haptics.selectionAsync(); updateSettings({ calculationMethod: method.id }); }}
+            onPress={() => { haptic(); updateSettings({ calculationMethod: method.id }); }}
           >
             <View style={s.optionLeft}>
               <Text style={s.optionName}>{method.name}</Text>
@@ -58,7 +60,7 @@ export default function SettingsScreen() {
           <TouchableOpacity
             key={m.id}
             style={[s.optionRow, idx < MADHAB_OPTIONS.length - 1 && s.optionDivider]}
-            onPress={() => { Haptics.selectionAsync(); updateSettings({ madhab: m.id }); }}
+            onPress={() => { haptic(); updateSettings({ madhab: m.id }); }}
           >
             <View style={s.optionLeft}>
               <Text style={s.optionName}>{m.name}</Text>
@@ -144,7 +146,7 @@ export default function SettingsScreen() {
           <TouchableOpacity
             key={theme}
             style={[s.optionRow, idx < arr.length - 1 && s.optionDivider]}
-            onPress={() => { Haptics.selectionAsync(); updateSettings({ theme }); }}
+            onPress={() => { haptic(); updateSettings({ theme }); }}
           >
             <View style={s.optionLeft}>
               <Text style={s.optionName}>{theme.charAt(0).toUpperCase() + theme.slice(1)} Mode</Text>
