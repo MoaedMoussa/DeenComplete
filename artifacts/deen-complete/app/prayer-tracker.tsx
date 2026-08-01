@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, StyleSheet, Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/contexts/AppContext";
@@ -87,7 +87,7 @@ export default function PrayerTrackerScreen() {
           <Text style={s.statLabel}>Missed</Text>
         </View>
         <View style={[s.statCard, s.streakCard]}>
-          <Text style={s.streakEmoji}>🔥</Text>
+          <Ionicons name="flame" size={22} color="#F59E0B" />
           <Text style={[s.statNum, s.streakNum]}>{streak}</Text>
           <Text style={s.statLabel}>Day Streak</Text>
         </View>
@@ -183,7 +183,6 @@ const styles = (colors: ReturnType<typeof useColors>, bottomPad: number) =>
     statNum: { fontFamily: "Inter_700Bold", fontSize: 20, color: colors.foreground },
     streakNum: { color: colors.accent },
     statLabel: { fontFamily: "Inter_400Regular", fontSize: 11, color: colors.mutedForeground },
-    streakEmoji: { fontSize: 20 },
     sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: colors.foreground, marginBottom: 10 },
     heatmapCard: {
       backgroundColor: colors.card,

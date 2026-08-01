@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, Animated, Platform, TouchableOpacity, Easing, ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
 
 import { useColors } from "@/hooks/useColors";
@@ -271,7 +271,7 @@ export default function QiblaScreen() {
           {/* Qibla needle — always points to Kaaba */}
           <View style={s.needleLayer} pointerEvents="none">
             <View style={[s.needleContainer, { transform: [{ rotate: `${relativeQibla}deg` }] }]}>
-              <Text style={s.kaabaEmoji}>🕋</Text>
+              <MaterialCommunityIcons name="mosque" size={24} color="#C8973A" />
               <View style={[s.needleUp, { backgroundColor: "#C8973A" }]} />
               <View style={[s.needleDown, { backgroundColor: "#C8973A40" }]} />
             </View>

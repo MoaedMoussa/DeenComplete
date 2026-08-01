@@ -4,7 +4,7 @@ import {
   TextInput, Platform, StatusBar,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
 import { useColors } from "@/hooks/useColors";
@@ -90,9 +90,9 @@ export default function QuranScreen() {
             onPress={() => toggleBookmarkSurah(item.id)}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Feather
-              name={bm ? "bookmark" : "bookmark"}
-              size={15}
+            <Ionicons
+              name={bm ? "bookmark" : "bookmark-outline"}
+              size={16}
               color={bm ? colors.accent : colors.border}
             />
           </TouchableOpacity>
@@ -197,7 +197,7 @@ export default function QuranScreen() {
           renderItem={({ item }) => <SurahRow item={item} />}
           ListEmptyComponent={() => (
             <View style={styles.empty}>
-              <Text style={{ fontSize: 48, marginBottom: 12 }}>📖</Text>
+              <Ionicons name={tab === "bookmarks" ? "bookmark-outline" : "book-outline"} size={48} color={colors.border} style={{ marginBottom: 12 }} />
               <Text style={[styles.emptyTxt, { color: colors.mutedForeground }]}>
                 {tab === "bookmarks" ? "No bookmarks yet" : "No surahs found"}
               </Text>

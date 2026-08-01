@@ -4,7 +4,7 @@ import {
   Platform, Modal, TextInput, FlatList, StatusBar,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 
@@ -15,7 +15,13 @@ import { searchCities, City } from "@/data/cities";
 
 type PrayerKey = "fajr" | "dhuhr" | "asr" | "maghrib" | "isha";
 const KEYS: PrayerKey[] = ["fajr", "dhuhr", "asr", "maghrib", "isha"];
-const EMOJI: Record<string, string> = { fajr: "🌙", dhuhr: "☀️", asr: "🌤", maghrib: "🌅", isha: "🌙" };
+const PRAYER_ICON_NAME: Record<string, string> = {
+  fajr: "moon-outline",
+  dhuhr: "sunny-outline",
+  asr: "partly-sunny-outline",
+  maghrib: "cloudy-night-outline",
+  isha: "moon",
+};
 
 export default function PrayerScreen() {
   const colors = useColors();
@@ -71,7 +77,7 @@ export default function PrayerScreen() {
           <View style={styles.heroMain}>
             <Text style={styles.heroLabel}>Next Prayer</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Text style={styles.heroEmoji}>{EMOJI[next.key]}</Text>
+              <Ionicons name={PRAYER_ICON_NAME[next.key] as any} size={26} color="#fff" />
               <Text style={styles.heroName}>{next.name}</Text>
             </View>
             <Text style={[styles.heroNameAr, { fontFamily: "Amiri_400Regular" }]}>{next.nameArabic}</Text>
@@ -112,7 +118,7 @@ export default function PrayerScreen() {
         {/* Sunrise */}
         {sunrise && (
           <View style={[styles.sunriseRow, { backgroundColor: colors.goldLight, borderColor: colors.accent + "30" }]}>
-            <Text style={{ fontSize: 18 }}>🌅</Text>
+            <Ionicons name="sunny" size={18} color={colors.accent} />
             <Text style={[styles.sunriseTxt, { color: colors.accent }]}>
               Sunrise · {formatTime(sunrise.time, tz)}
             </Text>
@@ -136,7 +142,9 @@ export default function PrayerScreen() {
                   {/* Active indicator */}
                   {isNext && <View style={[styles.activeBar, { backgroundColor: colors.primary }]} />}
 
-                  <Text style={styles.prayerEmoji}>{EMOJI[key]}</Text>
+                  <View style={styles.prayerIconWrap}>
+                    <Ionicons name={PRAYER_ICON_NAME[key] as any} size={18} color={isNext ? colors.primary : isPast ? colors.mutedForeground : colors.foreground} />
+                  </View>
 
                   <View style={{ flex: 1 }}>
                     <Text style={[
@@ -189,10 +197,10 @@ export default function PrayerScreen() {
         {/* Tool row */}
         <View style={styles.toolRow}>
           {[
-            { emoji: "🧭", label: "Qibla", action: () => router.push("/qibla") },
-            { emoji: "📊", label: "Tracker", action: () => router.push("/prayer-tracker") },
-            { emoji: "📡", label: "GPS", action: () => requestLocation() },
-            { emoji: "⚙️", label: "Settings", action: () => router.push("/settings") },
+            { iconName: "compass-outline", label: "Qibla", action: () => router.push("/qibla") },
+            { iconName: "stats-chart-outline", label: "Tracker", action: () => router.push("/prayer-tracker") },
+            { iconName: "locate-outline", label: "GPS", action: () => requestLocation() },
+            { iconName: "settings-outline", label: "Settings", action: () => router.push("/settings") },
           ].map(t => (
             <TouchableOpacity
               key={t.label}
@@ -200,7 +208,7 @@ export default function PrayerScreen() {
               onPress={t.action}
               activeOpacity={0.8}
             >
-              <Text style={{ fontSize: 22 }}>{t.emoji}</Text>
+              <Ionicons name={t.iconName as any} size={22} color={colors.primary} />
               <Text style={[styles.toolLabel, { color: colors.foreground }]}>{t.label}</Text>
             </TouchableOpacity>
           ))}
@@ -210,12 +218,18 @@ export default function PrayerScreen() {
         <View style={[styles.extraCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.extraTitle, { color: colors.foreground }]}>Additional Times</Text>
           <View style={styles.extraRow}>
-            <Text style={[styles.extraLabel, { color: colors.foreground }]}>🌙  Islamic Midnight</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Ionicons name="moon-outline" size={16} color={colors.foreground} />
+              <Text style={[styles.extraLabel, { color: colors.foreground }]}>Islamic Midnight</Text>
+            </View>
             <Text style={[styles.extraVal, { color: colors.primary }]}>{formatTime(prayerTimes.midnight, tz)}</Text>
           </View>
           <View style={[styles.extraSep, { backgroundColor: colors.border }]} />
           <View style={styles.extraRow}>
-            <Text style={[styles.extraLabel, { color: colors.foreground }]}>⭐  Last Third of Night</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Ionicons name="star-outline" size={16} color={colors.foreground} />
+              <Text style={[styles.extraLabel, { color: colors.foreground }]}>Last Third of Night</Text>
+            </View>
             <Text style={[styles.extraVal, { color: colors.primary }]}>{formatTime(prayerTimes.lastThird, tz)}</Text>
           </View>
         </View>
@@ -285,7 +299,6 @@ const styles = StyleSheet.create({
   heroDate: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.65)" },
   heroMain: { marginBottom: 18 },
   heroLabel: { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.6)", marginBottom: 4 },
-  heroEmoji: { fontSize: 26 },
   heroName: { fontFamily: "Inter_700Bold", fontSize: 34, color: "#fff" },
   heroNameAr: { fontSize: 22, color: "rgba(255,255,255,0.75)", marginTop: 2 },
   heroTime: { fontFamily: "Inter_700Bold", fontSize: 50, color: "#fff", marginTop: 6 },
@@ -299,12 +312,12 @@ const styles = StyleSheet.create({
   prayerCard: { borderRadius: 20, borderWidth: 1, overflow: "hidden", marginBottom: 14, shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
   prayerRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, position: "relative" },
   activeBar: { position: "absolute", left: 0, top: 0, bottom: 0, width: 3, borderRadius: 2 },
-  prayerEmoji: { fontSize: 18, width: 28, marginRight: 10 },
+  prayerIconWrap: { width: 28, marginRight: 10, alignItems: "center" },
   prayerName: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: "#2C2C2C" },
   prayerAr: { fontSize: 14, marginTop: 1 },
   prayerTime: { fontFamily: "Inter_700Bold", fontSize: 15, minWidth: 68, textAlign: "right", marginRight: 10 },
   logRow: { flexDirection: "row", gap: 4 },
-  logBtn: { width: 26, height: 26, borderRadius: 13, backgroundColor: "#F0F0F0", justifyContent: "center", alignItems: "center" },
+  logBtn: { width: 26, height: 26, borderRadius: 13, backgroundColor: "rgba(128,128,128,0.12)", justifyContent: "center", alignItems: "center" },
   logGreen: { backgroundColor: "#22C55E" },
   logAmber: { backgroundColor: "#F59E0B" },
   logRed: { backgroundColor: "#EF4444" },

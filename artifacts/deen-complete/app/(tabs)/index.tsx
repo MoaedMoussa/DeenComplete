@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Platform, StatusBar, ImageBackground,
+  Platform, StatusBar, useColorScheme,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
 import { useColors } from "@/hooks/useColors";
@@ -14,17 +14,24 @@ import { getDailyVerse, allSurahsList } from "@/data/quran";
 import { getDailyHadith } from "@/data/hadith";
 
 const PRAYER_KEYS = ["fajr", "dhuhr", "asr", "maghrib", "isha"] as const;
-const PRAYER_EMOJI: Record<string, string> = { fajr: "🌙", dhuhr: "☀️", asr: "🌤", maghrib: "🌅", isha: "🌙" };
+const PRAYER_ICON_NAME: Record<string, string> = {
+  fajr: "moon-outline",
+  dhuhr: "sunny-outline",
+  asr: "partly-sunny-outline",
+  maghrib: "cloudy-night-outline",
+  isha: "moon",
+};
 
-const ACTIONS = [
-  { icon: "🧭", label: "Qibla", route: "/qibla" },
-  { icon: "🤲", label: "Duas", route: "/duas" },
-  { icon: "📖", label: "Hadith", route: "/hadith" },
-  { icon: "☪️", label: "99 Names", route: "/names" },
-  { icon: "💰", label: "Zakat", route: "/zakat" },
-  { icon: "🕋", label: "Hajj Guide", route: "/hajj" },
-  { icon: "📅", label: "Calendar", route: "/calendar" },
-  { icon: "📊", label: "Tracker", route: "/prayer-tracker" },
+type ActionIcon = { lib: "Ionicons" | "MaterialCommunityIcons"; name: string };
+const ACTIONS: { icon: ActionIcon; label: string; route: string }[] = [
+  { icon: { lib: "Ionicons", name: "compass-outline" }, label: "Qibla", route: "/qibla" },
+  { icon: { lib: "Ionicons", name: "hand-left-outline" }, label: "Duas", route: "/duas" },
+  { icon: { lib: "Ionicons", name: "book-outline" }, label: "Hadith", route: "/hadith" },
+  { icon: { lib: "Ionicons", name: "infinite-outline" }, label: "99 Names", route: "/names" },
+  { icon: { lib: "Ionicons", name: "calculator-outline" }, label: "Zakat", route: "/zakat" },
+  { icon: { lib: "MaterialCommunityIcons", name: "mosque" }, label: "Hajj Guide", route: "/hajj" },
+  { icon: { lib: "Ionicons", name: "calendar-outline" }, label: "Calendar", route: "/calendar" },
+  { icon: { lib: "Ionicons", name: "stats-chart-outline" }, label: "Tracker", route: "/prayer-tracker" },
 ];
 
 export default function HomeScreen() {
@@ -50,11 +57,12 @@ export default function HomeScreen() {
   const prayedCount = PRAYER_KEYS.filter(p => todayLog?.[p] === "prayed").length;
 
   const greeting = now.getHours() < 12 ? "Good Morning" : now.getHours() < 17 ? "Good Afternoon" : "Good Evening";
+  const colorScheme = useColorScheme();
   const topPad = Platform.OS === "web" ? 0 : insets.top;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+      <StatusBar barStyle={colorScheme === "dark" ? "light-content" : "dark-content"} backgroundColor={colors.background} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
 
         {/* ── TOP HEADER ── */}
@@ -63,7 +71,7 @@ export default function HomeScreen() {
             <Text style={[styles.bismillah, { color: colors.accent, fontFamily: "Amiri_400Regular" }]}>
               بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
             </Text>
-            <Text style={[styles.greeting, { color: colors.foreground }]}>{greeting} 🌿</Text>
+            <Text style={[styles.greeting, { color: colors.foreground }]}>{greeting}</Text>
             <TouchableOpacity
               style={styles.locationRow}
               onPress={() => router.push("/(tabs)/prayer")}
@@ -96,7 +104,7 @@ export default function HomeScreen() {
               <View>
                 <Text style={styles.heroLabel}>Next Prayer</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 }}>
-                  <Text style={styles.heroEmoji}>{PRAYER_EMOJI[next.key]}</Text>
+                  <Ionicons name={PRAYER_ICON_NAME[next.key] as any} size={26} color="#fff" />
                   <Text style={styles.heroName}>{next.name}</Text>
                 </View>
                 <Text style={[styles.heroNameAr, { fontFamily: "Amiri_400Regular" }]}>{next.nameArabic}</Text>
@@ -154,7 +162,7 @@ export default function HomeScreen() {
                 onPress={() => router.push("/(tabs)/prayer")}
                 activeOpacity={0.8}
               >
-                <Text style={styles.pillEmoji}>{PRAYER_EMOJI[p.key]}</Text>
+                <Ionicons name={PRAYER_ICON_NAME[p.key] as any} size={18} color={isNext ? colors.primary : colors.mutedForeground} style={{ marginBottom: 2 }} />
                 <Text style={[styles.pillName, { color: isNext ? colors.primary : colors.mutedForeground }]}>
                   {p.name}
                 </Text>
@@ -225,7 +233,10 @@ export default function HomeScreen() {
               onPress={() => router.push(a.route as any)}
               activeOpacity={0.8}
             >
-              <Text style={styles.actionEmoji}>{a.icon}</Text>
+              {a.icon.lib === "MaterialCommunityIcons"
+                ? <MaterialCommunityIcons name={a.icon.name as any} size={26} color={colors.primary} />
+                : <Ionicons name={a.icon.name as any} size={26} color={colors.primary} />
+              }
               <Text style={[styles.actionLabel, { color: colors.foreground }]}>{a.label}</Text>
             </TouchableOpacity>
           ))}
@@ -258,7 +269,6 @@ const styles = StyleSheet.create({
   heroDotsLabel: { fontFamily: "Inter_500Medium", fontSize: 11, color: "rgba(255,255,255,0.55)", marginLeft: 2 },
   pillsRow: { paddingHorizontal: 16, gap: 8, paddingBottom: 14 },
   pill: { borderRadius: 16, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10, alignItems: "center", minWidth: 72 },
-  pillEmoji: { fontSize: 16, marginBottom: 2 },
   pillName: { fontFamily: "Inter_500Medium", fontSize: 10 },
   pillTime: { fontFamily: "Inter_700Bold", fontSize: 12, marginTop: 2 },
   pillDot: { width: 5, height: 5, borderRadius: 2.5, marginTop: 4 },
@@ -277,6 +287,5 @@ const styles = StyleSheet.create({
   sectionHead: { fontFamily: "Inter_700Bold", fontSize: 18, marginHorizontal: 20, marginBottom: 12 },
   actionsGrid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 16, gap: 10 },
   actionCard: { width: "22%", flexGrow: 1, borderRadius: 18, borderWidth: 1, padding: 14, alignItems: "center", gap: 6, minWidth: 78 },
-  actionEmoji: { fontSize: 26 },
   actionLabel: { fontFamily: "Inter_600SemiBold", fontSize: 11, textAlign: "center" },
 });

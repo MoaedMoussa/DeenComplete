@@ -1,34 +1,36 @@
 import React from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
 import { useColors } from "@/hooks/useColors";
 
-const SECTIONS = [
+type SectionIcon = { lib: "Ionicons" | "MaterialCommunityIcons"; name: string };
+
+const SECTIONS: { title: string; items: { icon: SectionIcon; label: string; sub: string; route: string }[] }[] = [
   {
     title: "Knowledge",
     items: [
-      { icon: "📖", label: "Hadith Library", sub: "Authentic hadiths by collection", route: "/hadith" },
-      { icon: "☪️", label: "99 Names of Allah", sub: "With meanings and dhikr counter", route: "/names" },
-      { icon: "🤲", label: "Dua Library", sub: "Hisnul Muslim & more", route: "/duas" },
+      { icon: { lib: "Ionicons", name: "book-outline" }, label: "Hadith Library", sub: "Authentic hadiths by collection", route: "/hadith" },
+      { icon: { lib: "Ionicons", name: "infinite-outline" }, label: "99 Names of Allah", sub: "With meanings and dhikr counter", route: "/names" },
+      { icon: { lib: "Ionicons", name: "hand-left-outline" }, label: "Dua Library", sub: "Hisnul Muslim & more", route: "/duas" },
     ],
   },
   {
     title: "Worship",
     items: [
-      { icon: "🕋", label: "Hajj & Umrah Guide", sub: "Step-by-step pilgrimage guide", route: "/hajj" },
-      { icon: "💰", label: "Zakat Calculator", sub: "Gold, silver, cash & investments", route: "/zakat" },
-      { icon: "📊", label: "Prayer Tracker", sub: "Daily log & streaks", route: "/prayer-tracker" },
+      { icon: { lib: "MaterialCommunityIcons", name: "mosque" }, label: "Hajj & Umrah Guide", sub: "Step-by-step pilgrimage guide", route: "/hajj" },
+      { icon: { lib: "Ionicons", name: "calculator-outline" }, label: "Zakat Calculator", sub: "Gold, silver, cash & investments", route: "/zakat" },
+      { icon: { lib: "Ionicons", name: "stats-chart-outline" }, label: "Prayer Tracker", sub: "Daily log & streaks", route: "/prayer-tracker" },
     ],
   },
   {
     title: "Tools",
     items: [
-      { icon: "📅", label: "Islamic Calendar", sub: "Hijri dates & Islamic events", route: "/calendar" },
-      { icon: "🧭", label: "Qibla Compass", sub: "Find the direction of prayer", route: "/qibla" },
-      { icon: "⚙️", label: "Settings", sub: "Calculation method, theme & more", route: "/settings" },
+      { icon: { lib: "Ionicons", name: "calendar-outline" }, label: "Islamic Calendar", sub: "Hijri dates & Islamic events", route: "/calendar" },
+      { icon: { lib: "Ionicons", name: "compass-outline" }, label: "Qibla Compass", sub: "Find the direction of prayer", route: "/qibla" },
+      { icon: { lib: "Ionicons", name: "settings-outline" }, label: "Settings", sub: "Calculation method, theme & more", route: "/settings" },
     ],
   },
 ];
@@ -64,7 +66,10 @@ export default function MoreScreen() {
                     activeOpacity={0.72}
                   >
                     <View style={[styles.iconWrap, { backgroundColor: colors.primary + "10" }]}>
-                      <Text style={{ fontSize: 22 }}>{item.icon}</Text>
+                      {item.icon.lib === "MaterialCommunityIcons"
+                        ? <MaterialCommunityIcons name={item.icon.name as any} size={22} color={colors.primary} />
+                        : <Ionicons name={item.icon.name as any} size={22} color={colors.primary} />
+                      }
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.rowLabel, { color: colors.foreground }]}>{item.label}</Text>
