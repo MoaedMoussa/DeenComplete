@@ -313,7 +313,7 @@ const styles = StyleSheet.create({
   prayerRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, position: "relative" },
   activeBar: { position: "absolute", left: 0, top: 0, bottom: 0, width: 3, borderRadius: 2 },
   prayerIconWrap: { width: 28, marginRight: 10, alignItems: "center" },
-  prayerName: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: "#2C2C2C" },
+  prayerName: { fontFamily: "Inter_600SemiBold", fontSize: 16 },
   prayerAr: { fontSize: 14, marginTop: 1 },
   prayerTime: { fontFamily: "Inter_700Bold", fontSize: 15, minWidth: 68, textAlign: "right", marginRight: 10 },
   logRow: { flexDirection: "row", gap: 4 },

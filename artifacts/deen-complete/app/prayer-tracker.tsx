@@ -102,7 +102,7 @@ export default function PrayerTrackerScreen() {
             <Text key={p} style={s.heatmapPrayer}>{PRAYER_LABELS[p][0]}</Text>
           ))}
         </View>
-        {last30Days.slice(-14).map(date => {
+        {last30Days.map(date => {
           const l = logs[date];
           const d = new Date(date);
           const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });

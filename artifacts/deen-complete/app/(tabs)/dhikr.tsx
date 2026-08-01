@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform,
 } from "react-native";
@@ -6,10 +6,68 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
+import Svg, { Circle } from "react-native-svg";
+import Animated, { useAnimatedProps, withSpring, useSharedValue } from "react-native-reanimated";
 
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/contexts/AppContext";
 import { dhikrSets, quickDhikr } from "@/data/dhikr";
+
+// ── Animated SVG ring ──────────────────────────────────────────
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const RING_SIZE = 200;
+const STROKE = 12;
+const RADIUS = (RING_SIZE - STROKE) / 2;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+function DhikrProgressRing({
+  progress, displayCount, target, cycle,
+  primaryColor, borderColor, mutedForeground, accentColor,
+}: {
+  progress: number; displayCount: number; target: number; cycle: number;
+  primaryColor: string; borderColor: string; mutedForeground: string; accentColor: string;
+}) {
+  const progressAnim = useSharedValue(progress);
+
+  useEffect(() => {
+    progressAnim.value = withSpring(progress, { damping: 18, stiffness: 55 });
+  }, [progress]);
+
+  const animatedProps = useAnimatedProps(() => ({
+    strokeDashoffset: CIRCUMFERENCE * (1 - Math.max(0, Math.min(1, progressAnim.value))),
+  }));
+
+  return (
+    <View style={styles.counterWrap}>
+      {/* SVG ring rotated so arc starts at 12 o'clock */}
+      <Svg width={RING_SIZE} height={RING_SIZE} style={{ transform: [{ rotate: "-90deg" }] }}>
+        {/* Track */}
+        <Circle
+          cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RADIUS}
+          stroke={borderColor} strokeWidth={STROKE} fill="none"
+        />
+        {/* Animated progress arc */}
+        <AnimatedCircle
+          cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RADIUS}
+          stroke={primaryColor} strokeWidth={STROKE} fill="none"
+          strokeDasharray={CIRCUMFERENCE}
+          animatedProps={animatedProps}
+          strokeLinecap="round"
+        />
+      </Svg>
+      {/* Centre labels — absolute, unaffected by SVG rotation */}
+      <View style={styles.ringCenter}>
+        <Text style={[styles.counterNum, { color: primaryColor }]}>{displayCount}</Text>
+        <Text style={[styles.counterOf, { color: mutedForeground }]}>of {target}</Text>
+        {cycle > 0 && (
+          <View style={[styles.cycleBadge, { backgroundColor: accentColor }]}>
+            <Text style={styles.cycleTxt}>×{cycle}</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
 
 type Tab = "tasbih" | "sets" | "names";
 const NAMES_DATA = [
@@ -114,21 +172,17 @@ export default function DhikrScreen() {
           <Text style={[styles.dhikrTrans, { color: colors.mutedForeground }]}>{selected.transliteration}</Text>
           <Text style={[styles.dhikrMean, { color: colors.foreground }]}>{selected.translation}</Text>
 
-          {/* ── COUNTER CIRCLE ── */}
-          <View style={styles.counterWrap}>
-            {/* Outer ring */}
-            <View style={[styles.counterRingOuter, { borderColor: colors.border }]}>
-              <View style={[styles.counterRingInner, { borderColor: colors.primary }]}>
-                <Text style={[styles.counterNum, { color: colors.primary }]}>{displayCount}</Text>
-                <Text style={[styles.counterOf, { color: colors.mutedForeground }]}>of {target}</Text>
-                {cycle > 0 && (
-                  <View style={[styles.cycleBadge, { backgroundColor: colors.accent }]}>
-                    <Text style={styles.cycleTxt}>×{cycle}</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          </View>
+          {/* ── ANIMATED PROGRESS RING ── */}
+          <DhikrProgressRing
+            progress={progress}
+            displayCount={displayCount}
+            target={target}
+            cycle={cycle}
+            primaryColor={colors.primary}
+            borderColor={colors.border}
+            mutedForeground={colors.mutedForeground}
+            accentColor={colors.accent}
+          />
 
           {/* Tap button */}
           <TouchableOpacity
@@ -273,9 +327,8 @@ const styles = StyleSheet.create({
   dhikrAr: { fontSize: 32, textAlign: "center", marginBottom: 4 },
   dhikrTrans: { fontFamily: "Inter_400Regular", fontSize: 14, textAlign: "center", marginBottom: 4 },
   dhikrMean: { fontFamily: "Inter_400Regular", fontSize: 13, textAlign: "center", marginBottom: 24 },
-  counterWrap: { marginBottom: 28 },
-  counterRingOuter: { width: 200, height: 200, borderRadius: 100, borderWidth: 2, justifyContent: "center", alignItems: "center" },
-  counterRingInner: { width: 172, height: 172, borderRadius: 86, borderWidth: 5, justifyContent: "center", alignItems: "center", position: "relative" },
+  counterWrap: { marginBottom: 28, width: RING_SIZE, height: RING_SIZE, alignItems: "center", justifyContent: "center" },
+  ringCenter: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" },
   counterNum: { fontFamily: "Inter_700Bold", fontSize: 58 },
   counterOf: { fontFamily: "Inter_400Regular", fontSize: 13 },
   cycleBadge: { position: "absolute", top: 10, right: 10, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 },
