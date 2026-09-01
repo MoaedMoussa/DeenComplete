@@ -7,7 +7,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import Svg, { Circle } from "react-native-svg";
-import Animated, { useAnimatedProps, withSpring, useSharedValue } from "react-native-reanimated";
+import Animated, { useAnimatedProps, withSpring, useSharedValue, useAnimatedStyle, withSequence, withTiming } from "react-native-reanimated";
 
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/contexts/AppContext";
@@ -15,6 +15,7 @@ import { dhikrSets, quickDhikr } from "@/data/dhikr";
 
 // ── Animated SVG ring ──────────────────────────────────────────
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 const RING_SIZE = 200;
 const STROKE = 12;
 const RADIUS = (RING_SIZE - STROKE) / 2;
@@ -69,6 +70,45 @@ function DhikrProgressRing({
   );
 }
 
+function DhikrCounter({
+  count, target, done, primaryColor, mutedForeground, onIncrement, onReset
+}: {
+  count: number; target: number; done: boolean;
+  primaryColor: string; mutedForeground: string;
+  onIncrement: () => void;
+  onReset: () => void;
+}) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      {count > 0 && (
+        <TouchableOpacity onPress={onReset} style={{ padding: 8 }}>
+          <Feather name="rotate-ccw" size={16} color={mutedForeground} />
+        </TouchableOpacity>
+      )}
+      <AnimatedTouchableOpacity
+        style={[styles.setItemBtn, { backgroundColor: done ? primaryColor : primaryColor + "15" }, animStyle]}
+        onPress={() => {
+          scale.value = withSequence(withTiming(0.9, { duration: 80 }), withSpring(1));
+          onIncrement();
+        }}
+        activeOpacity={1}
+      >
+        <Text style={[styles.setItemCount, { color: done ? "#fff" : primaryColor }]}>
+          {Math.min(count, target)}
+        </Text>
+        <Text style={[styles.setItemOf, { color: done ? "rgba(255,255,255,0.6)" : mutedForeground }]}>
+          /{target}
+        </Text>
+      </AnimatedTouchableOpacity>
+    </View>
+  );
+}
+
 type Tab = "tasbih" | "sets" | "names";
 const NAMES_DATA = [
   { n: 1, ar: "ٱللَّهُ", en: "Allah", mean: "The One God" },
@@ -94,11 +134,23 @@ export default function DhikrScreen() {
   const [target, setTarget] = useState(33);
   const [count, setCount] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [nightMode, setNightMode] = useState(false);
 
   const topPad = Platform.OS === "web" ? 0 : insets.top;
   const progress = Math.min(count / target, 1);
   const cycle = Math.floor(count / target);
   const displayCount = count === 0 ? 0 : count % target === 0 ? target : count % target;
+
+  const themeColors = nightMode ? {
+    background: "#000000",
+    foreground: "#FFFFFF",
+    muted: "#1A1A1A",
+    mutedForeground: "#888888",
+    card: "#0A0A0A",
+    border: "#333333",
+    primary: "#C8973A", // High contrast gold
+    accent: "#C8973A",
+  } : colors;
 
   function tap() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -117,27 +169,38 @@ export default function DhikrScreen() {
   }
 
   return (
-    <View style={[styles.wrap, { backgroundColor: colors.background }]}>
+    <View style={[styles.wrap, { backgroundColor: themeColors.background }]}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: topPad + 18 }]}>
         <View>
-          <Text style={[styles.title, { color: colors.foreground }]}>Dhikr</Text>
-          <Text style={[styles.titleAr, { color: colors.accent, fontFamily: "Amiri_400Regular" }]}>الذكر</Text>
+          <Text style={[styles.title, { color: themeColors.foreground }]}>Dhikr</Text>
+          <Text style={[styles.titleAr, { color: themeColors.accent, fontFamily: "Amiri_400Regular" }]}>الذكر</Text>
         </View>
-        <TouchableOpacity onPress={() => router.push("/names")} style={[styles.namesBtn, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "30" }]}>
-          <Text style={[styles.namesBtnTxt, { color: colors.primary }]}>99 Names</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <TouchableOpacity 
+            onPress={() => {
+              Haptics.selectionAsync();
+              setNightMode(!nightMode);
+            }} 
+            style={[styles.nightModeBtn, { backgroundColor: themeColors.card, borderColor: themeColors.border }]}
+          >
+            <Feather name={nightMode ? "sun" : "moon"} size={18} color={themeColors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push("/names")} style={[styles.namesBtn, { backgroundColor: themeColors.primary + "12", borderColor: themeColors.primary + "30" }]}>
+            <Text style={[styles.namesBtnTxt, { color: themeColors.primary }]}>99 Names</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Tabs */}
-      <View style={[styles.tabRow, { backgroundColor: colors.muted }]}>
+      <View style={[styles.tabRow, { backgroundColor: themeColors.muted }]}>
         {(["tasbih", "sets", "names"] as Tab[]).map(t => (
           <TouchableOpacity
             key={t}
-            style={[styles.tabBtn, t === tab && [styles.tabBtnActive, { backgroundColor: colors.card }]]}
+            style={[styles.tabBtn, t === tab && [styles.tabBtnActive, { backgroundColor: themeColors.card, shadowColor: nightMode ? "transparent" : "#000" }]]}
             onPress={() => setTab(t)}
           >
-            <Text style={[styles.tabTxt, { color: t === tab ? colors.foreground : colors.mutedForeground },
+            <Text style={[styles.tabTxt, { color: t === tab ? themeColors.foreground : themeColors.mutedForeground },
               t === tab && { fontFamily: "Inter_700Bold" }]}>
               {t === "tasbih" ? "Tasbih" : t === "sets" ? "Dhikr Sets" : "Quick Names"}
             </Text>
@@ -154,11 +217,11 @@ export default function DhikrScreen() {
               <TouchableOpacity
                 key={d.id}
                 style={[styles.chip,
-                  { backgroundColor: selected.id === d.id ? colors.primary : colors.card, borderColor: selected.id === d.id ? colors.primary : colors.border }
+                  { backgroundColor: selected.id === d.id ? themeColors.primary : themeColors.card, borderColor: selected.id === d.id ? themeColors.primary : themeColors.border }
                 ]}
                 onPress={() => { setSelected(d); setTarget(d.count); setCount(0); }}
               >
-                <Text style={[styles.chipTxt, { color: selected.id === d.id ? "#fff" : colors.foreground }]}>
+                <Text style={[styles.chipTxt, { color: selected.id === d.id ? (nightMode ? "#000" : "#fff") : themeColors.foreground }]}>
                   {d.transliteration}
                 </Text>
               </TouchableOpacity>
@@ -166,11 +229,11 @@ export default function DhikrScreen() {
           </ScrollView>
 
           {/* Selected dhikr display */}
-          <Text style={[styles.dhikrAr, { color: colors.primary, fontFamily: "Amiri_700Bold" }]}>
+          <Text style={[styles.dhikrAr, { color: themeColors.primary, fontFamily: "Amiri_700Bold" }]}>
             {selected.arabic}
           </Text>
-          <Text style={[styles.dhikrTrans, { color: colors.mutedForeground }]}>{selected.transliteration}</Text>
-          <Text style={[styles.dhikrMean, { color: colors.foreground }]}>{selected.translation}</Text>
+          <Text style={[styles.dhikrTrans, { color: themeColors.mutedForeground }]}>{selected.transliteration}</Text>
+          <Text style={[styles.dhikrMean, { color: themeColors.foreground }]}>{selected.translation}</Text>
 
           {/* ── ANIMATED PROGRESS RING ── */}
           <DhikrProgressRing
@@ -178,36 +241,36 @@ export default function DhikrScreen() {
             displayCount={displayCount}
             target={target}
             cycle={cycle}
-            primaryColor={colors.primary}
-            borderColor={colors.border}
-            mutedForeground={colors.mutedForeground}
-            accentColor={colors.accent}
+            primaryColor={themeColors.primary}
+            borderColor={themeColors.border}
+            mutedForeground={themeColors.mutedForeground}
+            accentColor={themeColors.accent}
           />
 
           {/* Tap button */}
           <TouchableOpacity
-            style={[styles.tapBtn, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
+            style={[styles.tapBtn, { backgroundColor: themeColors.primary, shadowColor: themeColors.primary, shadowOpacity: nightMode ? 0.15 : 0.3 }]}
             onPress={tap}
             activeOpacity={0.88}
           >
-            <Text style={[styles.tapBtnAr, { fontFamily: "Amiri_700Bold" }]}>{selected.arabic}</Text>
-            <Text style={styles.tapBtnLabel}>Tap to count</Text>
+            <Text style={[styles.tapBtnAr, { fontFamily: "Amiri_700Bold", color: nightMode ? "#000" : "#fff" }]}>{selected.arabic}</Text>
+            <Text style={[styles.tapBtnLabel, { color: nightMode ? "rgba(0,0,0,0.6)" : "rgba(255,255,255,0.7)" }]}>Tap to count</Text>
           </TouchableOpacity>
 
           {/* Controls */}
           <View style={styles.controls}>
             <TouchableOpacity style={styles.resetBtn} onPress={reset}>
-              <Feather name="rotate-ccw" size={15} color={colors.mutedForeground} />
-              <Text style={[styles.resetTxt, { color: colors.mutedForeground }]}>Reset</Text>
+              <Feather name="rotate-ccw" size={15} color={themeColors.mutedForeground} />
+              <Text style={[styles.resetTxt, { color: themeColors.mutedForeground }]}>Reset</Text>
             </TouchableOpacity>
             <View style={styles.targetRow}>
               {[33, 100, 1000].map(t => (
                 <TouchableOpacity
                   key={t}
-                  style={[styles.targetBtn, { backgroundColor: target === t ? colors.primary : colors.muted }]}
+                  style={[styles.targetBtn, { backgroundColor: target === t ? themeColors.primary : themeColors.muted }]}
                   onPress={() => setTarget(t)}
                 >
-                  <Text style={[styles.targetTxt, { color: target === t ? "#fff" : colors.mutedForeground }]}>{t}</Text>
+                  <Text style={[styles.targetTxt, { color: target === t ? (nightMode ? "#000" : "#fff") : themeColors.mutedForeground }]}>{t}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -219,45 +282,46 @@ export default function DhikrScreen() {
       {tab === "sets" && (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
           {dhikrSets.map(set => (
-            <View key={set.id} style={[styles.setCard, { backgroundColor: colors.card, borderColor: expanded === set.id ? colors.primary : colors.border }]}>
+            <View key={set.id} style={[styles.setCard, { backgroundColor: themeColors.card, borderColor: expanded === set.id ? themeColors.primary : themeColors.border }]}>
               <TouchableOpacity
                 style={styles.setCardHdr}
                 onPress={() => setExpanded(expanded === set.id ? null : set.id)}
                 activeOpacity={0.8}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.setName, { color: colors.foreground }]}>{set.name}</Text>
-                  <Text style={[styles.setNameAr, { color: colors.accent, fontFamily: "Amiri_400Regular" }]}>{set.nameArabic}</Text>
-                  <Text style={[styles.setDesc, { color: colors.mutedForeground }]}>{set.description}</Text>
+                  <Text style={[styles.setName, { color: themeColors.foreground }]}>{set.name}</Text>
+                  <Text style={[styles.setNameAr, { color: themeColors.accent, fontFamily: "Amiri_400Regular" }]}>{set.nameArabic}</Text>
+                  <Text style={[styles.setDesc, { color: themeColors.mutedForeground }]}>{set.description}</Text>
                 </View>
-                <Feather name={expanded === set.id ? "chevron-up" : "chevron-down"} size={18} color={colors.mutedForeground} />
+                <Feather name={expanded === set.id ? "chevron-up" : "chevron-down"} size={18} color={themeColors.mutedForeground} />
               </TouchableOpacity>
               {expanded === set.id && (
-                <View style={[styles.setItems, { borderTopColor: colors.border }]}>
+                <View style={[styles.setItems, { borderTopColor: themeColors.border }]}>
                   {set.items.map(item => {
                     const c = dhikrCounts[`${set.id}-${item.id}`] ?? 0;
                     const done = c >= item.count;
                     return (
-                      <View key={item.id} style={[styles.setItem, { borderBottomColor: colors.border }]}>
+                      <View key={item.id} style={[styles.setItem, { borderBottomColor: themeColors.border }]}>
                         <View style={{ flex: 1, marginRight: 12 }}>
-                          <Text style={[styles.setItemAr, { color: colors.primary, fontFamily: "Amiri_400Regular" }]}>{item.arabic}</Text>
-                          <Text style={[styles.setItemTrans, { color: colors.mutedForeground }]}>{item.transliteration}</Text>
-                          <Text style={[styles.setItemMean, { color: colors.foreground }]}>{item.translation} · ×{item.count}</Text>
+                          <Text style={[styles.setItemAr, { color: themeColors.primary, fontFamily: "Amiri_400Regular" }]}>{item.arabic}</Text>
+                          <Text style={[styles.setItemTrans, { color: themeColors.mutedForeground }]}>{item.transliteration}</Text>
+                          <Text style={[styles.setItemMean, { color: themeColors.foreground }]}>{item.translation} · ×{item.count}</Text>
                         </View>
-                        <TouchableOpacity
-                          style={[styles.setItemBtn, { backgroundColor: done ? colors.primary : colors.primary + "15" }]}
-                          onPress={() => {
+                        <DhikrCounter
+                          count={c}
+                          target={item.count}
+                          done={done}
+                          primaryColor={themeColors.primary}
+                          mutedForeground={themeColors.mutedForeground}
+                          onIncrement={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                             if (!done) incrementDhikr(`${set.id}-${item.id}`);
                           }}
-                        >
-                          <Text style={[styles.setItemCount, { color: done ? "#fff" : colors.primary }]}>
-                            {Math.min(c, item.count)}
-                          </Text>
-                          <Text style={[styles.setItemOf, { color: done ? "rgba(255,255,255,0.6)" : colors.mutedForeground }]}>
-                            /{item.count}
-                          </Text>
-                        </TouchableOpacity>
+                          onReset={() => {
+                            Haptics.selectionAsync();
+                            resetDhikr(`${set.id}-${item.id}`);
+                          }}
+                        />
                       </View>
                     );
                   })}
@@ -271,10 +335,10 @@ export default function DhikrScreen() {
       {/* ── QUICK NAMES ── */}
       {tab === "names" && (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
-          <Text style={[styles.namesIntro, { color: colors.primary, fontFamily: "Amiri_700Bold" }]}>
+          <Text style={[styles.namesIntro, { color: themeColors.primary, fontFamily: "Amiri_700Bold" }]}>
             أَسْمَاءُ اللَّهِ الْحُسْنَى
           </Text>
-          <Text style={[styles.namesIntroSub, { color: colors.mutedForeground }]}>
+          <Text style={[styles.namesIntroSub, { color: themeColors.mutedForeground }]}>
             Tap a name to count your recitation
           </Text>
           <View style={styles.namesGrid}>
@@ -283,25 +347,25 @@ export default function DhikrScreen() {
               return (
                 <TouchableOpacity
                   key={n.n}
-                  style={[styles.nameCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  style={[styles.nameCard, { backgroundColor: themeColors.card, borderColor: themeColors.border }]}
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); incrementDhikr(`name-${n.n}`); }}
                   activeOpacity={0.8}
                 >
-                  <Text style={[styles.nameNum, { color: colors.mutedForeground }]}>{n.n}</Text>
-                  <Text style={[styles.nameAr, { color: colors.primary, fontFamily: "Amiri_400Regular" }]}>{n.ar}</Text>
-                  <Text style={[styles.nameEn, { color: colors.foreground }]}>{n.en}</Text>
-                  <Text style={[styles.nameMean, { color: colors.mutedForeground }]}>{n.mean}</Text>
-                  {c > 0 && <View style={[styles.nameCount, { backgroundColor: colors.primary }]}><Text style={styles.nameCountTxt}>{c}</Text></View>}
+                  <Text style={[styles.nameNum, { color: themeColors.mutedForeground }]}>{n.n}</Text>
+                  <Text style={[styles.nameAr, { color: themeColors.primary, fontFamily: "Amiri_400Regular" }]}>{n.ar}</Text>
+                  <Text style={[styles.nameEn, { color: themeColors.foreground }]}>{n.en}</Text>
+                  <Text style={[styles.nameMean, { color: themeColors.mutedForeground }]}>{n.mean}</Text>
+                  {c > 0 && <View style={[styles.nameCount, { backgroundColor: themeColors.primary }]}><Text style={[styles.nameCountTxt, { color: nightMode ? "#000" : "#fff" }]}>{c}</Text></View>}
                 </TouchableOpacity>
               );
             })}
           </View>
           <TouchableOpacity
-            style={[styles.viewAllBtn, { backgroundColor: colors.primary }]}
+            style={[styles.viewAllBtn, { backgroundColor: themeColors.primary }]}
             onPress={() => router.push("/names")}
           >
-            <Text style={styles.viewAllTxt}>View All 99 Names</Text>
-            <Feather name="chevron-right" size={16} color="#fff" />
+            <Text style={[styles.viewAllTxt, { color: nightMode ? "#000" : "#fff" }]}>View All 99 Names</Text>
+            <Feather name="chevron-right" size={16} color={nightMode ? "#000" : "#fff"} />
           </TouchableOpacity>
         </ScrollView>
       )}

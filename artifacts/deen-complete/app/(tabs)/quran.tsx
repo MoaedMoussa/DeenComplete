@@ -1,38 +1,222 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
-  View, Text, FlatList, StyleSheet, TouchableOpacity,
-  TextInput, Platform, StatusBar,
+  View, Text, StyleSheet, TouchableOpacity, TouchableWithoutFeedback,
+  Animated, PanResponder, Dimensions, ActivityIndicator,
+  ScrollView, Modal, FlatList, TextInput, Platform, StatusBar, useWindowDimensions
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Rect, Path, Line } from "react-native-svg";
 
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/contexts/AppContext";
-import { allSurahsList } from "@/data/quran";
+import { allSurahsList, SURAH_START_PAGE } from "@/data/quran";
 
-type Tab = "surahs" | "juz" | "bookmarks";
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
-const JUZ_STARTS: Record<number, string> = {
-  1: "Al-Fatihah 1:1", 2: "Al-Baqarah 2:142", 3: "Al-Baqarah 2:253",
-  4: "Al-'Imran 3:92", 5: "An-Nisa 4:24", 6: "An-Nisa 4:148",
-  7: "Al-Ma'idah 5:82", 8: "Al-An'am 6:111", 9: "Al-A'raf 7:88",
-  10: "Al-Anfal 8:41", 11: "At-Tawbah 9:93", 12: "Hud 11:6",
-  13: "Yusuf 12:53", 14: "Al-Hijr 15:1", 15: "Al-Isra 17:1",
-  16: "Al-Kahf 18:75", 17: "Al-Anbiya 21:1", 18: "Al-Mu'minun 23:1",
-  19: "Al-Furqan 25:21", 20: "An-Naml 27:56", 21: "Al-'Ankabut 29:46",
-  22: "Al-Ahzab 33:31", 23: "Ya-Sin 36:28", 24: "Az-Zumar 39:32",
-  25: "Fussilat 41:47", 26: "Al-Ahqaf 46:1", 27: "Adh-Dhariyat 51:31",
-  28: "Al-Mujadila 58:1", 29: "Al-Mulk 67:1", 30: "An-Naba 78:1",
-};
+const ARABIC_NUMS = "٠١٢٣٤٥٦٧٨٩";
+function toArabicNum(n: number): string {
+  return String(n).split("").map(d => ARABIC_NUMS[parseInt(d)] ?? d).join("");
+}
+
+interface PageAyah {
+  number: number;
+  numberInSurah: number;
+  text: string;
+  surahNumber: number;
+  surahName: string;
+  surahNameAr: string;
+  surahRevType: string;
+  juz: number;
+  sajda: boolean;
+}
+
+const pageCache = new Map<string, PageAyah[]>();
+
+async function fetchPage(pageNum: number): Promise<PageAyah[]> {
+  const key = `page_${pageNum}`;
+  if (pageCache.has(key)) return pageCache.get(key)!;
+
+  const storageKey = `mushaf_v1_${key}`;
+  try {
+    const cached = await AsyncStorage.getItem(storageKey);
+    if (cached) {
+      const parsed = JSON.parse(cached) as PageAyah[];
+      pageCache.set(key, parsed);
+      return parsed;
+    }
+  } catch {}
+
+  const res = await fetch(`https://api.alquran.cloud/v1/page/${pageNum}/quran-uthmani`);
+  if (!res.ok) throw new Error("API error");
+  const json = await res.json();
+  if (json.code !== 200) throw new Error("API error");
+
+  const ayahs: PageAyah[] = (json.data.ayahs as any[]).map((a: any) => ({
+    number: a.number,
+    numberInSurah: a.numberInSurah,
+    text: a.text,
+    surahNumber: a.surah.number,
+    surahName: a.surah.englishName,
+    surahNameAr: a.surah.name,
+    surahRevType: a.surah.revelationType,
+    juz: a.juz,
+    sajda: !!a.sajda,
+  }));
+
+  pageCache.set(key, ayahs);
+  try { await AsyncStorage.setItem(storageKey, JSON.stringify(ayahs)); } catch {}
+  return ayahs;
+}
+
+function SurahFrame({ name }: { name: string }) {
+  return (
+    <View style={s.surahFrameContainer}>
+      <Svg width="100%" height="54" viewBox="0 0 340 54" preserveAspectRatio="none">
+        <Rect x="2" y="2" width="336" height="50" fill="#FDF8E7" stroke="#3B5743" strokeWidth="1.5" />
+        <Rect x="6" y="6" width="328" height="42" fill="none" stroke="#3B5743" strokeWidth="1" />
+        
+        <Rect x="10" y="10" width="30" height="34" fill="#3B5743" opacity="0.1" />
+        <Rect x="300" y="10" width="30" height="34" fill="#3B5743" opacity="0.1" />
+        
+        <Rect x="44" y="10" width="252" height="34" fill="none" stroke="#3B5743" strokeWidth="1" />
+        <Rect x="46" y="12" width="248" height="30" fill="none" stroke="#3B5743" strokeWidth="0.5" />
+        
+        <Path d="M25,20 L30,27 L25,34 L20,27 Z" fill="#3B5743" />
+        <Path d="M315,20 L320,27 L315,34 L310,27 Z" fill="#3B5743" />
+      </Svg>
+      <View style={s.surahTitleAbs}>
+        <Text style={s.surahTitleTxt}>{name}</Text>
+      </View>
+    </View>
+  );
+}
 
 export default function QuranScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { bookmarkedSurahs, toggleBookmarkSurah } = useApp();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { settings, updateSettings, bookmarkedSurahs, toggleBookmarkSurah } = useApp();
+
+  const [currentPage, setCurrentPage] = useState(settings.lastReadQuranPage ?? 1);
+  const [pageData, setPageData] = useState<PageAyah[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  const [showOverlay, setShowOverlay] = useState(false);
+  const [showIndex, setShowIndex] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<Tab>("surahs");
-  const topPad = Platform.OS === "web" ? 0 : insets.top;
+  const [indexTab, setIndexTab] = useState<"surahs" | "bookmarks">("surahs");
+
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const isAnimating = useRef(false);
+  const currentPageRef = useRef(currentPage);
+  currentPageRef.current = currentPage;
+
+  const topPad = Platform.OS === "web" ? 16 : insets.top || 16;
+  const bottomPad = insets.bottom || 16;
+
+  // Calculate dynamic dimensions for a perfect page layout
+  // A standard Quran page has a tall aspect ratio (~0.65 to 0.7)
+  const availableHeight = windowHeight - topPad - bottomPad;
+  const targetPageWidth = Math.min(windowWidth, availableHeight * 0.72, 800);
+
+  // Calculate optimal font size to perfectly fit ~15 lines per page
+  // Subtracting ~150px to account for the top and bottom headers/padding inside the frame
+  const optimalLineHeight = Math.max(30, (availableHeight - 150) / 15);
+  const optimalFontSize = optimalLineHeight / 2.2;
+  
+  // If the user has manually changed the font size from the default (26), respect it.
+  // Otherwise, use the dynamically calculated "perfect" font size for this screen.
+  const userHasCustomFontSize = settings.arabicFontSize && settings.arabicFontSize !== 26;
+  const fontSize = userHasCustomFontSize ? settings.arabicFontSize : optimalFontSize;
+  const currentLineHeight = fontSize * 2.2;
+
+  const loadPage = useCallback(async (page: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchPage(page);
+      setPageData(data);
+      if (page < 604) fetchPage(page + 1).catch(() => {});
+      if (page > 1) fetchPage(page - 1).catch(() => {});
+    } catch {
+      setError("Could not load page. Check your connection.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadPage(currentPage); }, [currentPage]);
+
+  function goToPage(newPage: number) {
+    if (isAnimating.current || newPage < 1 || newPage > 604) return;
+    const direction = newPage > currentPageRef.current ? 1 : -1;
+    isAnimating.current = true;
+    setShowOverlay(false);
+
+    Animated.timing(slideAnim, {
+      toValue: direction * SCREEN_W * 0.6,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setCurrentPage(newPage);
+      updateSettings({ lastReadQuranPage: newPage });
+      slideAnim.setValue(-direction * SCREEN_W * 0.6);
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 100,
+        friction: 12,
+        useNativeDriver: true,
+      }).start(() => { isAnimating.current = false; });
+    });
+  }
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dx) > 15 && Math.abs(g.dy) < Math.abs(g.dx) * 1.5,
+      onPanResponderRelease: (_, g) => {
+        if (g.dx < -50) goToPage(currentPageRef.current + 1); // Swipe left -> next page
+        else if (g.dx > 50) goToPage(currentPageRef.current - 1); // Swipe right -> prev page
+      },
+    })
+  ).current;
+
+  const handleTap = (e: any) => {
+    const x = e.nativeEvent.locationX;
+    if (x < SCREEN_W * 0.25) {
+      goToPage(currentPage + 1); // Tap left -> next page
+    } else if (x > SCREEN_W * 0.75) {
+      goToPage(currentPage - 1); // Tap right -> prev page
+    } else {
+      setShowOverlay(!showOverlay); // Tap center -> toggle overlay
+    }
+  };
+
+  const groups: {
+    surahNum: number; surahName: string; surahNameAr: string;
+    revType: string; ayahs: PageAyah[];
+  }[] = [];
+  for (const a of pageData) {
+    const last = groups[groups.length - 1];
+    if (!last || last.surahNum !== a.surahNumber) {
+      groups.push({
+        surahNum: a.surahNumber, surahName: a.surahName,
+        surahNameAr: a.surahNameAr, revType: a.surahRevType, ayahs: [a],
+      });
+    } else {
+      last.ayahs.push(a);
+    }
+  }
+
+  const juzNum = pageData[0]?.juz ?? 1;
+  const firstSurah = allSurahsList.find(s => s.id === (groups[0]?.surahNum ?? 1));
+  const headerSurahName = firstSurah ? `${firstSurah.nameArabic}` : "";
 
   const filtered = useMemo(() => {
     if (!search.trim()) return allSurahsList;
@@ -44,185 +228,318 @@ export default function QuranScreen() {
       String(s.id).includes(q)
     );
   }, [search]);
-
   const bookmarked = useMemo(() => allSurahsList.filter(s => bookmarkedSurahs.includes(s.id)), [bookmarkedSurahs]);
-
-  const juzData = useMemo(() =>
-    Array.from({ length: 30 }, (_, i) => ({
-      juz: i + 1,
-      start: JUZ_STARTS[i + 1] ?? "",
-      surahs: allSurahsList.filter(s => s.juz.includes(i + 1)),
-    })), []);
-
-  const listData = tab === "bookmarks" ? bookmarked : (search ? filtered : allSurahsList);
-
-  function SurahRow({ item }: { item: typeof allSurahsList[0] }) {
-    const bm = bookmarkedSurahs.includes(item.id);
-    const isMeccan = item.revelationType === "Meccan";
-    return (
-      <TouchableOpacity
-        style={[styles.row, { borderBottomColor: colors.border }]}
-        onPress={() => router.push(`/quran/${item.id}`)}
-        activeOpacity={0.72}
-      >
-        {/* Number badge */}
-        <View style={[styles.numWrap, { backgroundColor: colors.primary + "10" }]}>
-          {/* Diamond shape via overlapping rotated view */}
-          <Text style={[styles.numTxt, { color: colors.primary }]}>{item.id}</Text>
-        </View>
-
-        {/* Info */}
-        <View style={styles.rowInfo}>
-          <Text style={[styles.rowName, { color: colors.foreground }]}>{item.name}</Text>
-          <View style={styles.rowMeta}>
-            <Text style={[styles.rowTrans, { color: colors.mutedForeground }]}>{item.nameTranslation}</Text>
-            <View style={[styles.typeDot, { backgroundColor: isMeccan ? "#16A34A" : "#2563EB" }]} />
-            <Text style={[styles.rowVerses, { color: colors.mutedForeground }]}>{item.totalVerses} verses</Text>
-          </View>
-        </View>
-
-        {/* Arabic + bookmark */}
-        <View style={styles.rowRight}>
-          <Text style={[styles.rowArabic, { color: colors.primary, fontFamily: "Amiri_700Bold" }]}>
-            {item.nameArabic}
-          </Text>
-          <TouchableOpacity
-            onPress={() => toggleBookmarkSurah(item.id)}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Ionicons
-              name={bm ? "bookmark" : "bookmark-outline"}
-              size={16}
-              color={bm ? colors.accent : colors.border}
-            />
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    );
-  }
+  const listData = indexTab === "bookmarks" ? bookmarked : (search ? filtered : allSurahsList);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <StatusBar barStyle="dark-content" />
-
-      {/* ── HEADER ── */}
-      <View style={[styles.header, { paddingTop: topPad + 20 }]}>
-        <View style={styles.headerTitles}>
-          <Text style={[styles.headerAr, { color: colors.primary, fontFamily: "Amiri_700Bold" }]}>
-            القرآن الكريم
-          </Text>
-          <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-            114 Surahs · 6,236 Verses
-          </Text>
-        </View>
-        <TouchableOpacity onPress={() => router.push("/settings")} style={styles.settingsBtn}>
-          <Feather name="settings" size={20} color={colors.mutedForeground} />
-        </TouchableOpacity>
-      </View>
-
-      {/* ── SEARCH ── */}
-      <View style={[styles.searchBox, { backgroundColor: colors.muted }]}>
-        <Feather name="search" size={16} color={colors.mutedForeground} />
-        <TextInput
-          style={[styles.searchInput, { color: colors.foreground }]}
-          placeholder="Search surah, meaning or number…"
-          placeholderTextColor={colors.mutedForeground}
-          value={search}
-          onChangeText={v => { setSearch(v); if (v) setTab("surahs"); }}
-        />
-        {search.length > 0 && (
-          <TouchableOpacity onPress={() => setSearch("")}>
-            <Feather name="x" size={15} color={colors.mutedForeground} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* ── TABS ── */}
-      <View style={[styles.tabs, { backgroundColor: colors.muted }]}>
-        {(["surahs", "juz", "bookmarks"] as Tab[]).map(t => (
-          <TouchableOpacity
-            key={t}
-            style={[styles.tabBtn, t === tab && [styles.tabBtnActive, { backgroundColor: colors.card }]]}
-            onPress={() => { setTab(t); setSearch(""); }}
-          >
-            <Text style={[styles.tabTxt, { color: t === tab ? colors.foreground : colors.mutedForeground },
-              t === tab && { fontFamily: "Inter_700Bold" }]}>
-              {t === "surahs" ? "Surahs" : t === "juz" ? "Juz" : `Bookmarks (${bookmarked.length})`}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* ── LIST ── */}
-      {tab === "juz" ? (
-        <FlatList
-          data={juzData}
-          keyExtractor={item => String(item.juz)}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 120 }}
-          renderItem={({ item }) => (
-            <View>
-              <View style={[styles.juzHeader, { backgroundColor: colors.primary + "0A", borderBottomColor: colors.border }]}>
-                <View style={[styles.juzBadge, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.juzBadgeTxt}>{item.juz}</Text>
+    <View style={s.root}>
+      <StatusBar hidden={!showOverlay} animated />
+      
+      {/* Immersive Reader Layer */}
+      <Animated.View
+        style={[s.bookWrap, { maxWidth: targetPageWidth, transform: [{ translateX: slideAnim }] }]}
+        {...panResponder.panHandlers}
+      >
+        <TouchableWithoutFeedback onPress={handleTap}>
+          <View style={s.pageContainer}>
+            <View style={s.pageBorderOuter}>
+              <View style={s.pageBorderInner}>
+                
+                {/* Page Header */}
+                <View style={s.pageHeader}>
+                  <Text style={s.pageHeaderTxt}>الجزء {toArabicNum(juzNum)}</Text>
+                  <Text style={s.pageHeaderTxt}>{toArabicNum(currentPage)}</Text>
+                  <Text style={s.pageHeaderTxt}>{headerSurahName}</Text>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.juzTitle, { color: colors.primary }]}>Juz {item.juz}</Text>
-                  <Text style={[styles.juzSub, { color: colors.mutedForeground }]}>{item.start}</Text>
+                <View style={s.dashedLineContainer}>
+                  <Svg height="2" width="100%">
+                    <Line x1="0" y1="1" x2="100%" y2="1" stroke="#3B5743" strokeWidth="1.5" strokeDasharray="3, 3" />
+                  </Svg>
                 </View>
-                <Text style={[styles.juzCount, { color: colors.mutedForeground }]}>{item.surahs.length} surahs</Text>
-              </View>
-              {item.surahs.map((s, i) => (
-                <TouchableOpacity
-                  key={s.id}
-                  style={[styles.juzRow, { borderBottomColor: colors.border }]}
-                  onPress={() => router.push(`/quran/${s.id}`)}
-                  activeOpacity={0.72}
+
+                {/* Content */}
+                <ScrollView 
+                  style={s.pageContent} 
+                  contentContainerStyle={s.pageContentInner}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
                 >
-                  <Text style={[styles.juzRowNum, { color: colors.primary }]}>{s.id}</Text>
-                  <Text style={[styles.juzRowName, { color: colors.foreground }]}>{s.name}</Text>
-                  <Text style={[styles.juzRowVerse, { color: colors.mutedForeground }]}>{s.totalVerses} v.</Text>
-                  <Text style={[styles.juzRowAr, { color: colors.primary, fontFamily: "Amiri_400Regular" }]}>{s.nameArabic}</Text>
+                  {loading ? (
+                    <View style={s.center}>
+                      <ActivityIndicator size="large" color="#3B5743" />
+                      <Text style={s.loadTxt}>Loading page {currentPage}…</Text>
+                    </View>
+                  ) : error ? (
+                    <View style={s.center}>
+                      <Feather name="wifi-off" size={36} color="#3B5743" opacity={0.5} />
+                      <Text style={s.errTxt}>{error}</Text>
+                      <TouchableOpacity style={s.retryBtn} onPress={() => loadPage(currentPage)}>
+                        <Text style={s.retryTxt}>Try Again</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    groups.map((group, gi) => (
+                      <View key={`${group.surahNum}_${gi}`} style={{ marginBottom: 12 }}>
+                        {group.ayahs[0].numberInSurah === 1 && (
+                          <SurahFrame name={group.surahNameAr.replace("سُورَةُ", "").trim()} />
+                        )}
+
+                        {(() => {
+                          const isBismillahSurah = group.surahNum !== 1 && group.surahNum !== 9;
+                          const displayAyahs = group.ayahs.map((a, idx) => {
+                            if (idx === 0 && a.numberInSurah === 1 && isBismillahSurah) {
+                              const tokens = a.text.trim().split(/\s+/);
+                              const firstBare = tokens[0]?.replace(/[\u064B-\u065F\u0610-\u061A\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]/g, "") ?? "";
+                              if (firstBare.startsWith("\u0628\u0633\u0645") && tokens.length >= 4) {
+                                const stripped = tokens.slice(4).join(" ").trim();
+                                if (!stripped) return null;
+                                return { ...a, text: stripped };
+                              }
+                            }
+                            return a;
+                          }).filter((a): a is PageAyah => a !== null);
+
+                          return (
+                            <>
+                              {group.ayahs[0].numberInSurah === 1 && isBismillahSurah && (
+                                <View style={s.bismillahWrap}>
+                                  <Text style={s.bismillahTxt}>بِسۡمِ ٱللَّهِ ٱلرَّحۡمَـٰنِ ٱلرَّحِيمِ</Text>
+                                </View>
+                              )}
+
+                              {displayAyahs.length > 0 && (
+                                <Text style={[s.arabicFlow, { fontSize, lineHeight: currentLineHeight }]}>
+                                  {displayAyahs.map(a => (
+                                    <React.Fragment key={a.number}>
+                                      <Text>{a.text} </Text>
+                                      <Text style={s.verseMarker}>{`﴿${toArabicNum(a.numberInSurah)}﴾`} </Text>
+                                    </React.Fragment>
+                                  ))}
+                                </Text>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </View>
+                    ))
+                  )}
+                </ScrollView>
+
+              </View>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </Animated.View>
+
+      {/* Overlay UI */}
+      {showOverlay && (
+        <View style={s.overlayLayer} pointerEvents="box-none">
+          <View style={[s.overlayTopBar, { paddingTop: topPad }]}>
+            <TouchableOpacity onPress={() => setShowSettings(true)} style={s.overlayBtn} hitSlop={{top:10,bottom:10,left:10,right:10}}>
+              <Feather name="settings" size={24} color={colors.foreground} />
+            </TouchableOpacity>
+            <View style={{flex: 1}} />
+            <TouchableOpacity onPress={() => setShowIndex(true)} style={s.overlayBtn} hitSlop={{top:10,bottom:10,left:10,right:10}}>
+              <Feather name="list" size={24} color={colors.foreground} />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={s.overlayBottomBar}>
+            {/* Quick page navigator */}
+            <View style={[s.pageSliderBlock, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+               <TouchableOpacity style={[s.navBtn, currentPage >= 604 && s.navDim]} onPress={() => goToPage(currentPage + 1)}>
+                  <Feather name="chevron-left" size={24} color={colors.foreground} />
+               </TouchableOpacity>
+               <View style={s.navMid}>
+                 <Text style={[s.navPage, { color: colors.foreground }]}>{currentPage}</Text>
+                 <Text style={[s.navOf, { color: colors.mutedForeground }]}>of 604</Text>
+               </View>
+               <TouchableOpacity style={[s.navBtn, currentPage <= 1 && s.navDim]} onPress={() => goToPage(currentPage - 1)}>
+                  <Feather name="chevron-right" size={24} color={colors.foreground} />
+               </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Index Modal */}
+      <Modal visible={showIndex} animationType="slide" onRequestClose={() => setShowIndex(false)}>
+        <View style={[s.modalRoot, { backgroundColor: colors.background, paddingTop: topPad }]}>
+          <View style={s.modalHeader}>
+            <TouchableOpacity onPress={() => setShowIndex(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Feather name="x" size={24} color={colors.foreground} />
+            </TouchableOpacity>
+            <Text style={[s.modalTitle, { color: colors.foreground }]}>Index</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          <View style={[s.searchBox, { backgroundColor: colors.muted }]}>
+            <Feather name="search" size={16} color={colors.mutedForeground} />
+            <TextInput
+              style={[s.searchInput, { color: colors.foreground }]}
+              placeholder="Search surah…"
+              placeholderTextColor={colors.mutedForeground}
+              value={search}
+              onChangeText={v => { setSearch(v); if (v) setIndexTab("surahs"); }}
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch("")}>
+                <Feather name="x" size={15} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={[s.tabs, { backgroundColor: colors.muted }]}>
+            {(["surahs", "bookmarks"] as const).map(t => (
+              <TouchableOpacity
+                key={t}
+                style={[s.tabBtn, t === indexTab && [s.tabBtnActive, { backgroundColor: colors.card }]]}
+                onPress={() => { setIndexTab(t); setSearch(""); }}
+              >
+                <Text style={[s.tabTxt, { color: t === indexTab ? colors.foreground : colors.mutedForeground }]}>
+                  {t === "surahs" ? "Surahs" : "Bookmarks"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <FlatList
+            data={listData}
+            keyExtractor={item => String(item.id)}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => {
+              const bm = bookmarkedSurahs.includes(item.id);
+              const isMeccan = item.revelationType === "Meccan";
+              return (
+                <TouchableOpacity
+                  style={[s.row, { borderBottomColor: colors.border }]}
+                  onPress={() => {
+                    const page = SURAH_START_PAGE[item.id] ?? 1;
+                    goToPage(page);
+                    setShowIndex(false);
+                  }}
+                >
+                  <View style={[s.numWrap, { backgroundColor: colors.primary + "10" }]}>
+                    <Text style={[s.numTxt, { color: colors.primary }]}>{item.id}</Text>
+                  </View>
+                  <View style={s.rowInfo}>
+                    <Text style={[s.rowName, { color: colors.foreground }]}>{item.name}</Text>
+                    <View style={s.rowMeta}>
+                      <Text style={[s.rowTrans, { color: colors.mutedForeground }]}>{item.nameTranslation}</Text>
+                      <View style={[s.typeDot, { backgroundColor: isMeccan ? "#16A34A" : "#2563EB" }]} />
+                      <Text style={[s.rowVerses, { color: colors.mutedForeground }]}>{item.totalVerses} v.</Text>
+                    </View>
+                  </View>
+                  <View style={s.rowRight}>
+                    <Text style={[s.rowArabic, { color: colors.primary }]}>{item.nameArabic}</Text>
+                    <TouchableOpacity onPress={() => toggleBookmarkSurah(item.id)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                      <Ionicons name={bm ? "bookmark" : "bookmark-outline"} size={16} color={bm ? colors.accent : colors.border} />
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      </Modal>
+
+      {/* Settings Modal */}
+      <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
+        <TouchableOpacity style={s.overlayBg} activeOpacity={1} onPress={() => setShowSettings(false)}>
+          <View style={[s.sheet, { backgroundColor: colors.background }]}>
+            <View style={[s.sheetHandle, { backgroundColor: colors.border }]} />
+            <Text style={[s.sheetTitle, { color: colors.foreground }]}>Reader Settings</Text>
+
+            <Text style={[s.settingLabel, { color: colors.mutedForeground }]}>Arabic Font Size</Text>
+            <View style={s.fontRow}>
+              <TouchableOpacity style={[s.fontBtn, { backgroundColor: colors.muted }]} onPress={() => updateSettings({ arabicFontSize: Math.max(16, fontSize - 2) })}>
+                <Feather name="minus" size={16} color={colors.foreground} />
+              </TouchableOpacity>
+              <Text style={[s.fontVal, { color: colors.foreground }]}>{fontSize}px</Text>
+              <TouchableOpacity style={[s.fontBtn, { backgroundColor: colors.muted }]} onPress={() => updateSettings({ arabicFontSize: Math.min(36, fontSize + 2) })}>
+                <Feather name="plus" size={16} color={colors.foreground} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[s.settingLabel, { color: colors.mutedForeground, marginTop: 20 }]}>Jump to Page</Text>
+            <View style={s.jumpRow}>
+              {[1, 50, 100, 200, 300, 400, 500, 604].map(p => (
+                <TouchableOpacity key={p} style={[s.jumpBtn, { backgroundColor: currentPage === p ? "#1A5C3A" : colors.muted }]} onPress={() => { goToPage(p); setShowSettings(false); }}>
+                  <Text style={[s.jumpTxt, { color: currentPage === p ? "#fff" : colors.foreground }]}>{p}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-          )}
-        />
-      ) : (
-        <FlatList
-          data={listData}
-          keyExtractor={item => String(item.id)}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 120 }}
-          renderItem={({ item }) => <SurahRow item={item} />}
-          ListEmptyComponent={() => (
-            <View style={styles.empty}>
-              <Ionicons name={tab === "bookmarks" ? "bookmark-outline" : "book-outline"} size={48} color={colors.border} style={{ marginBottom: 12 }} />
-              <Text style={[styles.emptyTxt, { color: colors.mutedForeground }]}>
-                {tab === "bookmarks" ? "No bookmarks yet" : "No surahs found"}
-              </Text>
-            </View>
-          )}
-        />
-      )}
+            <View style={{ height: (insets.bottom || 20) + 20 }} />
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 14 },
-  headerTitles: {},
-  headerAr: { fontSize: 32 },
-  headerSub: { fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 },
-  settingsBtn: { padding: 6 },
+const CREAM = "#FDF8E7";
+const DARK_GREEN = "#3B5743";
+const GOLD = "#A58B55";
+
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: "#000", alignItems: "center" }, // Black background underneath gives immersive feel
+  bookWrap: { flex: 1, width: "100%" },
+  pageContainer: { flex: 1, backgroundColor: CREAM, padding: 8, width: "100%" },
+  pageBorderOuter: { flex: 1, borderWidth: 2, borderColor: DARK_GREEN, padding: 3 },
+  pageBorderInner: { flex: 1, borderWidth: 1, borderColor: DARK_GREEN, padding: 6, paddingBottom: 0 },
+  
+  pageHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 4, paddingVertical: 4 },
+  pageHeaderTxt: { fontFamily: "Amiri_400Regular", fontSize: 16, color: DARK_GREEN },
+  dashedLineContainer: { marginBottom: 6 },
+  
+  pageContent: { flex: 1 },
+  pageContentInner: { paddingHorizontal: 4, paddingBottom: 24 },
+  
+  surahFrameContainer: { alignItems: "center", justifyContent: "center", marginVertical: 12 },
+  surahTitleAbs: { position: "absolute", zIndex: 10 },
+  surahTitleTxt: { fontFamily: "Amiri_700Bold", fontSize: 22, color: "#111" },
+  
+  bismillahWrap: { alignItems: "center", marginVertical: 8 },
+  bismillahTxt: { fontFamily: "Amiri_700Bold", fontSize: 20, color: "#111" },
+  
+  arabicFlow: { fontFamily: "Amiri_700Bold", textAlign: "justify", writingDirection: "rtl", color: "#111" },
+  verseMarker: { color: GOLD },
+  
+  center: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 80, gap: 14 },
+  loadTxt: { fontFamily: "Inter_400Regular", fontSize: 14, color: DARK_GREEN },
+  errTxt: { fontFamily: "Inter_400Regular", fontSize: 13, color: DARK_GREEN, textAlign: "center" },
+  retryBtn: { backgroundColor: DARK_GREEN, borderRadius: 10, paddingHorizontal: 22, paddingVertical: 10 },
+  retryTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
+
+  overlayLayer: { ...StyleSheet.absoluteFillObject, justifyContent: "space-between" },
+  overlayTopBar: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: "rgba(255,255,255,0.9)", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "rgba(0,0,0,0.1)" },
+  overlayBtn: { padding: 8 },
+  overlayBottomBar: { backgroundColor: "rgba(255,255,255,0.95)" },
+  pageSliderBlock: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 16, borderTopWidth: StyleSheet.hairlineWidth },
+  navBtn: { padding: 12 },
+  navDim: { opacity: 0.3 },
+  navMid: { flex: 1, alignItems: "center" },
+  navPage: { fontFamily: "Inter_700Bold", fontSize: 20 },
+  navOf: { fontFamily: "Inter_400Regular", fontSize: 12 },
+
+  overlayBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 16 },
+  sheetTitle: { fontFamily: "Inter_700Bold", fontSize: 20, marginBottom: 16 },
+  settingLabel: { fontFamily: "Inter_600SemiBold", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 },
+  fontRow: { flexDirection: "row", alignItems: "center", gap: 16 },
+  fontBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center" },
+  fontVal: { fontFamily: "Inter_700Bold", fontSize: 18, minWidth: 52, textAlign: "center" },
+  jumpRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  jumpBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  jumpTxt: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
+  
+  modalRoot: { flex: 1 },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12 },
+  modalTitle: { fontFamily: "Inter_700Bold", fontSize: 18 },
   searchBox: { flexDirection: "row", alignItems: "center", borderRadius: 14, marginHorizontal: 16, marginBottom: 10, paddingHorizontal: 14, paddingVertical: 12, gap: 8 },
   searchInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 14 },
   tabs: { flexDirection: "row", marginHorizontal: 16, marginBottom: 8, borderRadius: 12, padding: 3 },
   tabBtn: { flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 10 },
   tabBtnActive: { shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
   tabTxt: { fontFamily: "Inter_500Medium", fontSize: 12 },
-  // Surah rows
   row: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: StyleSheet.hairlineWidth },
   numWrap: { width: 44, height: 44, borderRadius: 22, justifyContent: "center", alignItems: "center", marginRight: 14 },
   numTxt: { fontFamily: "Inter_700Bold", fontSize: 15 },
@@ -233,20 +550,5 @@ const styles = StyleSheet.create({
   typeDot: { width: 5, height: 5, borderRadius: 2.5 },
   rowVerses: { fontFamily: "Inter_400Regular", fontSize: 12 },
   rowRight: { alignItems: "flex-end", gap: 8 },
-  rowArabic: { fontSize: 22 },
-  // Juz
-  juzHeader: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
-  juzBadge: { width: 36, height: 36, borderRadius: 10, justifyContent: "center", alignItems: "center" },
-  juzBadgeTxt: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" },
-  juzTitle: { fontFamily: "Inter_700Bold", fontSize: 14 },
-  juzSub: { fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 1 },
-  juzCount: { fontFamily: "Inter_500Medium", fontSize: 12 },
-  juzRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, gap: 10 },
-  juzRowNum: { fontFamily: "Inter_700Bold", fontSize: 13, width: 28, textAlign: "center" },
-  juzRowName: { fontFamily: "Inter_600SemiBold", fontSize: 14, flex: 1 },
-  juzRowVerse: { fontFamily: "Inter_400Regular", fontSize: 12 },
-  juzRowAr: { fontSize: 16 },
-  // Empty
-  empty: { alignItems: "center", paddingTop: 80 },
-  emptyTxt: { fontFamily: "Inter_500Medium", fontSize: 15 },
+  rowArabic: { fontFamily: "Amiri_700Bold", fontSize: 22 },
 });

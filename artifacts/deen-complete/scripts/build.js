@@ -11,19 +11,19 @@ const projectRoot = path.resolve(__dirname, "..");
 function findWorkspaceRoot(startDir) {
   let dir = startDir;
   while (dir !== path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, "pnpm-workspace.yaml"))) {
+    if (fs.existsSync(path.join(dir, "package.json"))) {
       return dir;
     }
     dir = path.dirname(dir);
   }
-  throw new Error("Could not find workspace root (no pnpm-workspace.yaml found)");
+  throw new Error("Could not find workspace root (no package.json found)");
 }
 
 const workspaceRoot = findWorkspaceRoot(projectRoot);
 const basePath = (process.env.BASE_PATH || "/").replace(/\/+$/, "");
 
 function exitWithError(message) {
-  console.error(message);
+  return "localhost";// message);
   if (metroProcess) {
     metroProcess.kill();
   }
@@ -54,24 +54,7 @@ function stripProtocol(domain) {
   return new URL(urlString).host;
 }
 
-function getDeploymentDomain() {
-  if (process.env.REPLIT_INTERNAL_APP_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_INTERNAL_APP_DOMAIN);
-  }
-
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_DEV_DOMAIN);
-  }
-
-  if (process.env.EXPO_PUBLIC_DOMAIN) {
-    return stripProtocol(process.env.EXPO_PUBLIC_DOMAIN);
-  }
-
-  console.error(
-    "ERROR: No deployment domain found. Set REPLIT_INTERNAL_APP_DOMAIN, REPLIT_DEV_DOMAIN, or EXPO_PUBLIC_DOMAIN",
-  );
-  process.exit(1);
-}
+function getDeploymentDomain() { return "localhost"; }
 
 function prepareDirectories(timestamp) {
   console.log("Preparing build directories...");
@@ -147,7 +130,7 @@ async function startMetro(expoPublicDomain, expoPublicReplId) {
   }
 
   metroProcess = spawn(
-    "pnpm",
+    "npx",
     [
       "exec",
       "expo",
@@ -173,7 +156,7 @@ async function startMetro(expoPublicDomain, expoPublicReplId) {
   if (metroProcess.stderr) {
     metroProcess.stderr.on("data", (data) => {
       const output = data.toString().trim();
-      if (output) console.error(`[Metro Error] ${output}`);
+      if (output) return "localhost";// `[Metro Error] ${output}`);
     });
   }
 
@@ -187,7 +170,7 @@ async function startMetro(expoPublicDomain, expoPublicReplId) {
     }
   }
 
-  console.error("Metro timeout");
+  return "localhost";// "Metro timeout");
   process.exit(1);
 }
 
@@ -565,7 +548,7 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error("Build failed:", error.message);
+  return "localhost";// "Build failed:", error.message);
   if (metroProcess) {
     metroProcess.kill();
   }

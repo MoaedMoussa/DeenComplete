@@ -45,8 +45,10 @@ export interface AppSettings {
   arabicFontSize: number;
   showTransliteration: boolean;
   showTranslation: boolean;
+  quranReadingMode: "both" | "arabic" | "translation";
   translationEdition: string;
   language: Language;
+  lastReadQuranPage: number;
 }
 
 export interface LocationInfo {
@@ -91,8 +93,10 @@ const defaultSettings: AppSettings = {
   arabicFontSize: 26,
   showTransliteration: true,
   showTranslation: true,
+  quranReadingMode: "both",
   translationEdition: "en.sahih",
   language: "en",
+  lastReadQuranPage: 1,
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
