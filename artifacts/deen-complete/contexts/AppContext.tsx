@@ -34,6 +34,11 @@ export interface PrayerLog {
   isha: "prayed" | "missed" | "late" | null;
 }
 
+export interface QuranLog {
+  date: string;
+  pagesRead: number[];
+}
+
 export interface AppSettings {
   calculationMethod: string;
   madhab: string;
@@ -43,12 +48,14 @@ export interface AppSettings {
   darkMode: "system" | "light" | "dark";
   theme: "system" | "light" | "dark";
   arabicFontSize: number;
+  translationFontSize: number;
   showTransliteration: boolean;
   showTranslation: boolean;
   quranReadingMode: "both" | "arabic" | "translation";
   translationEdition: string;
   language: Language;
   lastReadQuranPage: number;
+  hasChosenLanguage: boolean;
 }
 
 export interface LocationInfo {
@@ -66,17 +73,22 @@ interface AppContextValue {
   location: LocationInfo | null;
   settings: AppSettings;
   prayerLogs: PrayerLog[];
+  quranLogs: QuranLog[];
   dhikrCounts: Record<string, number>;
   bookmarkedSurahs: number[];
   bookmarkedDuas: string[];
+  quranNotes: Record<string, string>;
   locationLoading: boolean;
   prayerTimesSource: "api" | "local";
   updateSettings: (s: Partial<AppSettings>) => void;
   logPrayer: (date: string, prayer: keyof Omit<PrayerLog, "date">, status: "prayed" | "missed" | "late") => void;
+  logQuranPage: (date: string, pageNumber: number) => void;
   incrementDhikr: (id: string) => void;
   resetDhikr: (id: string) => void;
   toggleBookmarkSurah: (id: number) => void;
   toggleBookmarkDua: (id: string) => void;
+  saveQuranNote: (key: string, note: string) => void;
+  deleteQuranNote: (key: string) => void;
   requestLocation: () => Promise<void>;
   setManualCity: (city: City) => void;
   refreshPrayerTimes: () => void;
@@ -91,12 +103,14 @@ const defaultSettings: AppSettings = {
   darkMode: "system",
   theme: "system",
   arabicFontSize: 26,
+  translationFontSize: 16,
   showTransliteration: true,
   showTranslation: true,
   quranReadingMode: "both",
   translationEdition: "en.sahih",
   language: "en",
   lastReadQuranPage: 1,
+  hasChosenLanguage: false,
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -178,9 +192,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useState<LocationInfo | null>(null);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [prayerLogs, setPrayerLogs] = useState<PrayerLog[]>([]);
+  const [quranLogs, setQuranLogs] = useState<QuranLog[]>([]);
   const [dhikrCounts, setDhikrCounts] = useState<Record<string, number>>({});
   const [bookmarkedSurahs, setBookmarkedSurahs] = useState<number[]>([]);
   const [bookmarkedDuas, setBookmarkedDuas] = useState<string[]>([]);
+  const [quranNotes, setQuranNotes] = useState<Record<string, string>>({});
   const [locationLoading, setLocationLoading] = useState(true);
   const [prayerTimesSource, setPrayerTimesSource] = useState<"api" | "local">("local");
 
@@ -188,13 +204,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   async function loadStoredData() {
     try {
-      const [storedSettings, storedLogs, storedDhikr, storedSurahs, storedDuas, storedLocation] =
+      const [storedSettings, storedLogs, storedQuranLogs, storedDhikr, storedSurahs, storedDuas, storedQuranNotes, storedLocation] =
         await Promise.all([
           AsyncStorage.getItem("settings"),
           AsyncStorage.getItem("prayerLogs"),
+          AsyncStorage.getItem("quranLogs"),
           AsyncStorage.getItem("dhikrCounts"),
           AsyncStorage.getItem("bookmarkedSurahs"),
           AsyncStorage.getItem("bookmarkedDuas"),
+          AsyncStorage.getItem("quranNotes"),
           AsyncStorage.getItem("savedLocation"),
         ]);
 
@@ -204,9 +222,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (storedSettings) setSettings(loadedSettings);
       if (storedLogs) setPrayerLogs(JSON.parse(storedLogs));
+      if (storedQuranLogs) setQuranLogs(JSON.parse(storedQuranLogs));
       if (storedDhikr) setDhikrCounts(JSON.parse(storedDhikr));
       if (storedSurahs) setBookmarkedSurahs(JSON.parse(storedSurahs));
       if (storedDuas) setBookmarkedDuas(JSON.parse(storedDuas));
+      if (storedQuranNotes) setQuranNotes(JSON.parse(storedQuranNotes));
 
       applyColorScheme(loadedSettings.theme ?? "system");
 
@@ -502,6 +522,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }
 
+  function logQuranPage(date: string, pageNumber: number) {
+    setQuranLogs(prev => {
+      const existing = prev.find(l => l.date === date);
+      let updated;
+      if (existing) {
+        if (existing.pagesRead.includes(pageNumber)) return prev;
+        updated = prev.map(l => l.date === date ? { ...l, pagesRead: [...l.pagesRead, pageNumber] } : l);
+      } else {
+        updated = [{ date, pagesRead: [pageNumber] }, ...prev.slice(0, 59)];
+      }
+      AsyncStorage.setItem("quranLogs", JSON.stringify(updated));
+      return updated;
+    });
+  }
+
   function incrementDhikr(id: string) {
     setDhikrCounts(prev => {
       const updated = { ...prev, [id]: (prev[id] || 0) + 1 };
@@ -534,12 +569,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }
 
+  function saveQuranNote(key: string, note: string) {
+    setQuranNotes(prev => {
+      const updated = { ...prev, [key]: note };
+      AsyncStorage.setItem("quranNotes", JSON.stringify(updated));
+      return updated;
+    });
+  }
+
+  function deleteQuranNote(key: string) {
+    setQuranNotes(prev => {
+      const updated = { ...prev };
+      delete updated[key];
+      AsyncStorage.setItem("quranNotes", JSON.stringify(updated));
+      return updated;
+    });
+  }
+
   return (
     <AppContext.Provider value={{
-      prayerTimes, location, settings, prayerLogs, dhikrCounts,
-      bookmarkedSurahs, bookmarkedDuas, locationLoading, prayerTimesSource,
-      updateSettings, logPrayer, incrementDhikr, resetDhikr,
-      toggleBookmarkSurah, toggleBookmarkDua, requestLocation,
+      prayerTimes, location, settings, prayerLogs, quranLogs, dhikrCounts,
+      bookmarkedSurahs, bookmarkedDuas, quranNotes, locationLoading, prayerTimesSource,
+      updateSettings, logPrayer, logQuranPage, incrementDhikr, resetDhikr,
+      toggleBookmarkSurah, toggleBookmarkDua, saveQuranNote, deleteQuranNote, requestLocation,
       setManualCity, refreshPrayerTimes,
     }}>
       {children}

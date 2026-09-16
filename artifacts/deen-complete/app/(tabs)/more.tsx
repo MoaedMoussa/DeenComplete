@@ -5,40 +5,44 @@ import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
 import { useColors } from "@/hooks/useColors";
+import { useApp } from "@/contexts/AppContext";
+import { useT } from "@/constants/i18n";
 
 type SectionIcon = { lib: "Ionicons" | "MaterialCommunityIcons"; name: string };
-
-const SECTIONS: { title: string; items: { icon: SectionIcon; label: string; sub: string; route: string }[] }[] = [
-  {
-    title: "Knowledge",
-    items: [
-      { icon: { lib: "Ionicons", name: "book-outline" }, label: "Hadith Library", sub: "Authentic hadiths by collection", route: "/hadith" },
-      { icon: { lib: "Ionicons", name: "infinite-outline" }, label: "99 Names of Allah", sub: "With meanings and dhikr counter", route: "/names" },
-      { icon: { lib: "Ionicons", name: "hand-left-outline" }, label: "Dua Library", sub: "Hisnul Muslim & more", route: "/duas" },
-    ],
-  },
-  {
-    title: "Worship",
-    items: [
-      { icon: { lib: "MaterialCommunityIcons", name: "mosque" }, label: "Hajj & Umrah Guide", sub: "Step-by-step pilgrimage guide", route: "/hajj" },
-      { icon: { lib: "Ionicons", name: "calculator-outline" }, label: "Zakat Calculator", sub: "Gold, silver, cash & investments", route: "/zakat" },
-      { icon: { lib: "Ionicons", name: "stats-chart-outline" }, label: "Prayer Tracker", sub: "Daily log & streaks", route: "/prayer-tracker" },
-    ],
-  },
-  {
-    title: "Tools",
-    items: [
-      { icon: { lib: "Ionicons", name: "calendar-outline" }, label: "Islamic Calendar", sub: "Hijri dates & Islamic events", route: "/calendar" },
-      { icon: { lib: "Ionicons", name: "compass-outline" }, label: "Qibla Compass", sub: "Find the direction of prayer", route: "/qibla" },
-      { icon: { lib: "Ionicons", name: "settings-outline" }, label: "Settings", sub: "Calculation method, theme & more", route: "/settings" },
-    ],
-  },
-];
 
 export default function MoreScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { settings } = useApp();
+  const t = useT(settings.language);
   const topPad = Platform.OS === "web" ? 0 : insets.top;
+
+  const SECTIONS: { title: string; items: { icon: SectionIcon; label: string; sub: string; route: string }[] }[] = [
+    {
+      title: t("knowledge"),
+      items: [
+        { icon: { lib: "Ionicons", name: "book-outline" }, label: t("hadithLibrary"), sub: t("hadithDesc"), route: "/hadith" },
+        { icon: { lib: "Ionicons", name: "infinite-outline" }, label: t("names99"), sub: t("namesDesc"), route: "/names" },
+        { icon: { lib: "Ionicons", name: "hand-left-outline" }, label: t("duaLibrary"), sub: t("duaDesc"), route: "/duas" },
+      ],
+    },
+    {
+      title: t("worship"),
+      items: [
+        { icon: { lib: "MaterialCommunityIcons", name: "mosque" }, label: t("hajjGuide"), sub: t("hajjDesc"), route: "/hajj" },
+        { icon: { lib: "Ionicons", name: "calculator-outline" }, label: t("zakatCalc"), sub: t("zakatDesc"), route: "/zakat" },
+        { icon: { lib: "Ionicons", name: "stats-chart-outline" }, label: t("prayerTracker"), sub: t("trackerDesc"), route: "/prayer-tracker" },
+      ],
+    },
+    {
+      title: t("tools"),
+      items: [
+        { icon: { lib: "Ionicons", name: "calendar-outline" }, label: t("islamicCalendar"), sub: t("calendarDesc"), route: "/calendar" },
+        { icon: { lib: "Ionicons", name: "compass-outline" }, label: t("qiblaCompass"), sub: t("qiblaDesc"), route: "/qibla" },
+        { icon: { lib: "Ionicons", name: "settings-outline" }, label: t("settings"), sub: t("settingsDesc"), route: "/settings" },
+      ],
+    },
+  ];
 
   return (
     <View style={[styles.wrap, { backgroundColor: colors.background }]}>
@@ -46,7 +50,7 @@ export default function MoreScreen() {
 
         {/* Header */}
         <View style={[styles.header, { paddingTop: topPad + 20 }]}>
-          <Text style={[styles.title, { color: colors.foreground }]}>Explore</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>{t("explore")}</Text>
           <Text style={[styles.titleAr, { color: colors.accent, fontFamily: "Amiri_400Regular" }]}>
             استكشف الدين
           </Text>

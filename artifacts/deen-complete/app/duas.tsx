@@ -181,10 +181,10 @@ const styles = (colors: ReturnType<typeof useColors>, bottomPad: number) =>
     duaBody: { paddingHorizontal: 14, paddingBottom: 14, borderTopWidth: 1, borderTopColor: colors.border },
     duaArabic: {
       fontFamily: "Amiri_400Regular",
-      fontSize: 20,
+      fontSize: settings.arabicFontSize || 20,
       color: colors.primary,
       textAlign: "right",
-      lineHeight: 36,
+      lineHeight: (settings.arabicFontSize || 20) * 1.8,
       paddingVertical: 14,
     },
     duaTranslit: {
@@ -198,9 +198,9 @@ const styles = (colors: ReturnType<typeof useColors>, bottomPad: number) =>
     duaDivider: { height: 1, backgroundColor: colors.border, marginBottom: 10 },
     duaTranslation: {
       fontFamily: "Inter_400Regular",
-      fontSize: 14,
+      fontSize: settings.translationFontSize || 14,
       color: colors.foreground,
-      lineHeight: 22,
+      lineHeight: (settings.translationFontSize || 14) * 1.5,
       marginBottom: 8,
     },
     duaSource: { fontFamily: "Inter_500Medium", fontSize: 12, color: colors.accent },

@@ -27,7 +27,15 @@ const strings = {
     isha: "Isha",
     sunrise: "Sunrise",
     nextPrayerLabel: "Next Prayer",
-    // Quran
+    allPrayersDone: "All Prayers Done",
+    setLocation: "Set Location",
+    searchCity: "Search for a city...",
+    chooseCity: "Choose City",
+    useGps: "Use current GPS location",
+    additionalTimes: "Additional Times",
+    islamicMidnight: "Islamic Midnight",
+    lastThird: "Last Third of Night",
+    quranLog: "Quran Log",
     quranTitle: "Quran",
     search: "Search surahs…",
     bookmarked: "Bookmarked",
@@ -35,9 +43,25 @@ const strings = {
     meccan: "Meccan",
     medinan: "Medinan",
     verses: "verses",
+    quranSearchPrompt: "Search Surahs by name or index...",
+    of604: "of 604",
+    index: "Index",
+    readerSettings: "Reader Settings",
+    jumpToPage: "Jump to Page",
+    selectReciter: "Select Reciter",
+    loadingPage: "Loading page",
+    tryAgain: "Try Again",
+    juz: "Juz",
     // Dhikr
     dhikrTitle: "Dhikr & Tasbih",
     reset: "Reset",
+    of: "of",
+    tapToCount: "Tap to count",
+    viewAll99Names: "View All 99 Names",
+    tasbih: "Tasbih",
+    sets: "Sets",
+    names: "Names",
+    dhikrLabel: "Dhikr",
     // More / Settings
     settings: "Settings",
     prayerCalculation: "Prayer Time Calculation",
@@ -54,6 +78,7 @@ const strings = {
     showTransliteration: "Show Transliteration",
     showTransliterationDesc: "Display Latin script",
     arabicFontSize: "Arabic Font Size",
+    translationFontSize: "Translation Font Size",
     appearance: "Appearance",
     systemMode: "System Mode",
     lightMode: "Light Mode",
@@ -87,6 +112,7 @@ const strings = {
     qiblaCompass: "Qibla Compass",
     qiblaDesc: "Find the direction of prayer",
     settingsDesc: "Calculation method, theme & more",
+    quranLog: "Quran Log",
     // Prayer tracker
     prayed: "Prayed",
     late: "Late",
@@ -119,7 +145,15 @@ const strings = {
     isha: "العشاء",
     sunrise: "الشروق",
     nextPrayerLabel: "الصلاة القادمة",
-    // Quran
+    allPrayersDone: "اكتملت صلوات اليوم",
+    setLocation: "حدد الموقع",
+    searchCity: "ابحث عن مدينة...",
+    chooseCity: "اختر مدينة",
+    useGps: "استخدام الموقع الحالي",
+    additionalTimes: "أوقات إضافية",
+    islamicMidnight: "منتصف الليل الإسلامي",
+    lastThird: "الثلث الأخير من الليل",
+    quranLog: "سجل القرآن",
     quranTitle: "القرآن الكريم",
     search: "ابحث عن سورة…",
     bookmarked: "المفضلة",
@@ -127,9 +161,25 @@ const strings = {
     meccan: "مكية",
     medinan: "مدنية",
     verses: "آيات",
+    quranSearchPrompt: "ابحث عن السور بالاسم أو الرقم...",
+    of604: "من 604",
+    index: "الفهرس",
+    readerSettings: "إعدادات القراءة",
+    jumpToPage: "انتقال إلى صفحة",
+    selectReciter: "اختر القارئ",
+    loadingPage: "جاري تحميل الصفحة",
+    tryAgain: "حاول مرة أخرى",
+    juz: "الجزء",
     // Dhikr
     dhikrTitle: "الذكر والتسبيح",
     reset: "إعادة",
+    of: "من",
+    tapToCount: "اضغط للعد",
+    viewAll99Names: "عرض أسماء الله الحسنى",
+    tasbih: "التسبيح",
+    sets: "المجموعات",
+    names: "الأسماء",
+    dhikrLabel: "الذكر",
     // More / Settings
     settings: "الإعدادات",
     prayerCalculation: "حساب مواقيت الصلاة",
@@ -146,6 +196,7 @@ const strings = {
     showTransliteration: "إظهار النطق اللاتيني",
     showTransliterationDesc: "عرض الكتابة الصوتية",
     arabicFontSize: "حجم الخط العربي",
+    translationFontSize: "حجم خط الترجمة",
     appearance: "المظهر",
     systemMode: "وضع النظام",
     lightMode: "الوضع الفاتح",
@@ -179,6 +230,7 @@ const strings = {
     qiblaCompass: "بوصلة القبلة",
     qiblaDesc: "تحديد اتجاه القبلة",
     settingsDesc: "طريقة الحساب والمظهر وغيره",
+    quranLog: "سجل القرآن",
     // Prayer tracker
     prayed: "صليت",
     late: "متأخرًا",
@@ -186,15 +238,12 @@ const strings = {
     prayedToday: "صليت اليوم",
   },
 } as const;
-
 export type TranslationKey = keyof typeof strings.en;
-
 export function t(lang: Language, key: TranslationKey): string {
   const val = strings[lang]?.[key];
   if (val != null) return val as string;
   return strings.en[key] as string;
 }
-
 export function useT(lang: Language) {
   return (key: TranslationKey) => t(lang, key);
 }

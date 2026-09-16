@@ -12,6 +12,7 @@ import Animated, { useAnimatedProps, withSpring, useSharedValue, useAnimatedStyl
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/contexts/AppContext";
 import { dhikrSets, quickDhikr } from "@/data/dhikr";
+import { useT } from "@/constants/i18n";
 
 // ── Animated SVG ring ──────────────────────────────────────────
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -128,7 +129,8 @@ const NAMES_DATA = [
 export default function DhikrScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { dhikrCounts, incrementDhikr, resetDhikr } = useApp();
+  const { dhikrCounts, incrementDhikr, resetDhikr, settings } = useApp();
+  const t = useT(settings.language);
   const [tab, setTab] = useState<Tab>("tasbih");
   const [selected, setSelected] = useState(quickDhikr[0]);
   const [target, setTarget] = useState(33);
@@ -173,7 +175,7 @@ export default function DhikrScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: topPad + 18 }]}>
         <View>
-          <Text style={[styles.title, { color: themeColors.foreground }]}>Dhikr</Text>
+          <Text style={[styles.title, { color: themeColors.foreground }]}>{t("dhikrLabel")}</Text>
           <Text style={[styles.titleAr, { color: themeColors.accent, fontFamily: "Amiri_400Regular" }]}>الذكر</Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -187,22 +189,22 @@ export default function DhikrScreen() {
             <Feather name={nightMode ? "sun" : "moon"} size={18} color={themeColors.primary} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push("/names")} style={[styles.namesBtn, { backgroundColor: themeColors.primary + "12", borderColor: themeColors.primary + "30" }]}>
-            <Text style={[styles.namesBtnTxt, { color: themeColors.primary }]}>99 Names</Text>
+            <Text style={[styles.namesBtnTxt, { color: themeColors.primary }]}>{t("names99")}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Tabs */}
       <View style={[styles.tabRow, { backgroundColor: themeColors.muted }]}>
-        {(["tasbih", "sets", "names"] as Tab[]).map(t => (
+        {(["tasbih", "sets", "names"] as Tab[]).map(tabKey => (
           <TouchableOpacity
-            key={t}
-            style={[styles.tabBtn, t === tab && [styles.tabBtnActive, { backgroundColor: themeColors.card, shadowColor: nightMode ? "transparent" : "#000" }]]}
-            onPress={() => setTab(t)}
+            key={tabKey}
+            style={[styles.tabBtn, tabKey === tab && [styles.tabBtnActive, { backgroundColor: themeColors.card, shadowColor: nightMode ? "transparent" : "#000" }]]}
+            onPress={() => setTab(tabKey)}
           >
-            <Text style={[styles.tabTxt, { color: t === tab ? themeColors.foreground : themeColors.mutedForeground },
-              t === tab && { fontFamily: "Inter_700Bold" }]}>
-              {t === "tasbih" ? "Tasbih" : t === "sets" ? "Dhikr Sets" : "Quick Names"}
+            <Text style={[styles.tabTxt, { color: tabKey === tab ? themeColors.foreground : themeColors.mutedForeground },
+              tabKey === tab && { fontFamily: "Inter_700Bold" }]}>
+              {tabKey === "tasbih" ? t("tasbih") : tabKey === "sets" ? t("sets") : t("names")}
             </Text>
           </TouchableOpacity>
         ))}
@@ -254,23 +256,23 @@ export default function DhikrScreen() {
             activeOpacity={0.88}
           >
             <Text style={[styles.tapBtnAr, { fontFamily: "Amiri_700Bold", color: nightMode ? "#000" : "#fff" }]}>{selected.arabic}</Text>
-            <Text style={[styles.tapBtnLabel, { color: nightMode ? "rgba(0,0,0,0.6)" : "rgba(255,255,255,0.7)" }]}>Tap to count</Text>
+            <Text style={[styles.tapBtnLabel, { color: nightMode ? "rgba(0,0,0,0.6)" : "rgba(255,255,255,0.7)" }]}>{t("tapToCount")}</Text>
           </TouchableOpacity>
 
           {/* Controls */}
           <View style={styles.controls}>
             <TouchableOpacity style={styles.resetBtn} onPress={reset}>
               <Feather name="rotate-ccw" size={15} color={themeColors.mutedForeground} />
-              <Text style={[styles.resetTxt, { color: themeColors.mutedForeground }]}>Reset</Text>
+              <Text style={[styles.resetTxt, { color: themeColors.mutedForeground }]}>{t("reset")}</Text>
             </TouchableOpacity>
             <View style={styles.targetRow}>
-              {[33, 100, 1000].map(t => (
+              {[33, 100, 1000].map(targetVal => (
                 <TouchableOpacity
-                  key={t}
-                  style={[styles.targetBtn, { backgroundColor: target === t ? themeColors.primary : themeColors.muted }]}
-                  onPress={() => setTarget(t)}
+                  key={targetVal}
+                  style={[styles.targetBtn, { backgroundColor: target === targetVal ? themeColors.primary : themeColors.muted }]}
+                  onPress={() => setTarget(targetVal)}
                 >
-                  <Text style={[styles.targetTxt, { color: target === t ? (nightMode ? "#000" : "#fff") : themeColors.mutedForeground }]}>{t}</Text>
+                  <Text style={[styles.targetTxt, { color: target === targetVal ? (nightMode ? "#000" : "#fff") : themeColors.mutedForeground }]}>{targetVal}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -339,7 +341,7 @@ export default function DhikrScreen() {
             أَسْمَاءُ اللَّهِ الْحُسْنَى
           </Text>
           <Text style={[styles.namesIntroSub, { color: themeColors.mutedForeground }]}>
-            Tap a name to count your recitation
+            {t("tapToCount")}
           </Text>
           <View style={styles.namesGrid}>
             {NAMES_DATA.map(n => {
@@ -364,7 +366,7 @@ export default function DhikrScreen() {
             style={[styles.viewAllBtn, { backgroundColor: themeColors.primary }]}
             onPress={() => router.push("/names")}
           >
-            <Text style={[styles.viewAllTxt, { color: nightMode ? "#000" : "#fff" }]}>View All 99 Names</Text>
+            <Text style={[styles.viewAllTxt, { color: nightMode ? "#000" : "#fff" }]}>{t("viewAll99Names")}</Text>
             <Feather name="chevron-right" size={16} color={nightMode ? "#000" : "#fff"} />
           </TouchableOpacity>
         </ScrollView>

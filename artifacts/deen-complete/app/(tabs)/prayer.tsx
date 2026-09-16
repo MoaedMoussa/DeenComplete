@@ -12,6 +12,7 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/contexts/AppContext";
 import { getAllPrayerEntries, getNextPrayerEntry, formatTime, formatCountdown } from "@/data/prayers";
 import { searchCities, City } from "@/data/cities";
+import { useT } from "@/constants/i18n";
 
 type PrayerKey = "fajr" | "dhuhr" | "asr" | "maghrib" | "isha";
 const KEYS: PrayerKey[] = ["fajr", "dhuhr", "asr", "maghrib", "isha"];
@@ -26,7 +27,8 @@ const PRAYER_ICON_NAME: Record<string, string> = {
 export default function PrayerScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { prayerTimes, location, logPrayer, prayerLogs, setManualCity, requestLocation, refreshPrayerTimes } = useApp();
+  const { prayerTimes, location, logPrayer, prayerLogs, setManualCity, requestLocation, refreshPrayerTimes, settings } = useApp();
+  const t = useT(settings.language);
   const [now, setNow] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
   const [query, setQuery] = useState("");
@@ -65,33 +67,33 @@ export default function PrayerScreen() {
             onPress={() => setShowPicker(true)}
           >
             <Feather name="map-pin" size={12} color="#fff" />
-            <Text style={styles.locTxt}>{location?.city ?? "Set Location"}</Text>
+            <Text style={styles.locTxt}>{location?.city ?? t("setLocation")}</Text>
             <Feather name="chevron-down" size={12} color="rgba(255,255,255,0.65)" />
           </TouchableOpacity>
           <Text style={styles.heroDate}>
-            {now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", ...(tz ? { timeZone: tz } : {}) })}
+            {now.toLocaleDateString(settings.language === "ar" ? "ar-EG" : "en-US", { weekday: "short", month: "short", day: "numeric", ...(tz ? { timeZone: tz } : {}) })}
           </Text>
         </View>
 
         {next ? (
           <View style={styles.heroMain}>
-            <Text style={styles.heroLabel}>Next Prayer</Text>
+            <Text style={styles.heroLabel}>{t("nextPrayerLabel")}</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Ionicons name={PRAYER_ICON_NAME[next.key] as any} size={26} color="#fff" />
-              <Text style={styles.heroName}>{next.name}</Text>
+              <Text style={styles.heroName}>{settings.language === "ar" ? next.nameArabic : next.name}</Text>
             </View>
-            <Text style={[styles.heroNameAr, { fontFamily: "Amiri_400Regular" }]}>{next.nameArabic}</Text>
+            <Text style={[styles.heroNameAr, { fontFamily: "Amiri_400Regular" }]}>{settings.language === "ar" ? next.name : next.nameArabic}</Text>
             <Text style={styles.heroTime}>{formatTime(next.time, tz)}</Text>
             <View style={[styles.heroBadge, { backgroundColor: "rgba(0,0,0,0.22)" }]}>
               <Feather name="clock" size={11} color={colors.accent} />
               <Text style={[styles.heroBadgeTxt, { color: colors.accent }]}>
-                in {formatCountdown(next.time)}
+                {formatCountdown(next.time)}
               </Text>
             </View>
           </View>
         ) : (
           <View style={styles.heroMain}>
-            <Text style={[styles.heroName, { color: "#fff" }]}>All Prayers Done</Text>
+            <Text style={[styles.heroName, { color: "#fff" }]}>{t("allPrayersDone")}</Text>
             <Text style={[styles.heroNameAr, { fontFamily: "Amiri_400Regular" }]}>الحمد لله</Text>
           </View>
         )}
@@ -109,7 +111,7 @@ export default function PrayerScreen() {
               ]} />
             );
           })}
-          <Text style={styles.dotLabel}>{prayedCount}/5 prayed</Text>
+          <Text style={styles.dotLabel}>{prayedCount}/5 {t("prayedToday")}</Text>
         </View>
       </View>
 
@@ -120,7 +122,7 @@ export default function PrayerScreen() {
           <View style={[styles.sunriseRow, { backgroundColor: colors.goldLight, borderColor: colors.accent + "30" }]}>
             <Ionicons name="sunny" size={18} color={colors.accent} />
             <Text style={[styles.sunriseTxt, { color: colors.accent }]}>
-              Sunrise · {formatTime(sunrise.time, tz)}
+              {t("sunrise")} · {formatTime(sunrise.time, tz)}
             </Text>
           </View>
         )}
@@ -152,10 +154,10 @@ export default function PrayerScreen() {
                       { color: isNext ? colors.primary : isPast ? colors.mutedForeground : colors.foreground },
                       isNext && { fontFamily: "Inter_700Bold" },
                     ]}>
-                      {entry.name}
+                      {settings.language === "ar" ? entry.nameArabic : entry.name}
                     </Text>
                     <Text style={[styles.prayerAr, { color: colors.mutedForeground, fontFamily: "Amiri_400Regular" }]}>
-                      {entry.nameArabic}
+                      {settings.language === "ar" ? entry.name : entry.nameArabic}
                     </Text>
                   </View>
 
@@ -197,30 +199,30 @@ export default function PrayerScreen() {
         {/* Tool row */}
         <View style={styles.toolRow}>
           {[
-            { iconName: "compass-outline", label: "Qibla", action: () => router.push("/qibla") },
-            { iconName: "stats-chart-outline", label: "Tracker", action: () => router.push("/prayer-tracker") },
+            { iconName: "compass-outline", label: t("qiblaCompass"), action: () => router.push("/qibla") },
+            { iconName: "stats-chart-outline", label: t("prayerTracker"), action: () => router.push("/prayer-tracker") },
             { iconName: "locate-outline", label: "GPS", action: () => requestLocation() },
-            { iconName: "settings-outline", label: "Settings", action: () => router.push("/settings") },
-          ].map(t => (
+            { iconName: "settings-outline", label: t("settings"), action: () => router.push("/settings") },
+          ].map((tt, i) => (
             <TouchableOpacity
-              key={t.label}
+              key={i}
               style={[styles.toolCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={t.action}
+              onPress={tt.action}
               activeOpacity={0.8}
             >
-              <Ionicons name={t.iconName as any} size={22} color={colors.primary} />
-              <Text style={[styles.toolLabel, { color: colors.foreground }]}>{t.label}</Text>
+              <Ionicons name={tt.iconName as any} size={22} color={colors.primary} />
+              <Text style={[styles.toolLabel, { color: colors.foreground }]}>{tt.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
         {/* Extra times */}
         <View style={[styles.extraCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.extraTitle, { color: colors.foreground }]}>Additional Times</Text>
+          <Text style={[styles.extraTitle, { color: colors.foreground }]}>{t("additionalTimes")}</Text>
           <View style={styles.extraRow}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Ionicons name="moon-outline" size={16} color={colors.foreground} />
-              <Text style={[styles.extraLabel, { color: colors.foreground }]}>Islamic Midnight</Text>
+              <Text style={[styles.extraLabel, { color: colors.foreground }]}>{t("islamicMidnight")}</Text>
             </View>
             <Text style={[styles.extraVal, { color: colors.primary }]}>{formatTime(prayerTimes.midnight, tz)}</Text>
           </View>
@@ -228,7 +230,7 @@ export default function PrayerScreen() {
           <View style={styles.extraRow}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Ionicons name="star-outline" size={16} color={colors.foreground} />
-              <Text style={[styles.extraLabel, { color: colors.foreground }]}>Last Third of Night</Text>
+              <Text style={[styles.extraLabel, { color: colors.foreground }]}>{t("lastThird")}</Text>
             </View>
             <Text style={[styles.extraVal, { color: colors.primary }]}>{formatTime(prayerTimes.lastThird, tz)}</Text>
           </View>
@@ -239,7 +241,7 @@ export default function PrayerScreen() {
       <Modal visible={showPicker} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPicker(false)}>
         <View style={[styles.modal, { backgroundColor: colors.background }]}>
           <View style={[styles.modalHdr, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Choose City</Text>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>{t("chooseCity")}</Text>
             <TouchableOpacity onPress={() => { setShowPicker(false); setQuery(""); }}>
               <Feather name="x" size={22} color={colors.foreground} />
             </TouchableOpacity>
@@ -252,15 +254,14 @@ export default function PrayerScreen() {
               <Feather name="crosshair" size={18} color={colors.primary} />
             </View>
             <View>
-              <Text style={[styles.gpsTxt, { color: colors.primary }]}>Use GPS Location</Text>
-              <Text style={[styles.gpsSub, { color: colors.mutedForeground }]}>Auto-detect from device</Text>
+              <Text style={[styles.gpsTxt, { color: colors.primary }]}>{t("useGps")}</Text>
             </View>
           </TouchableOpacity>
           <View style={[styles.searchRow, { backgroundColor: colors.muted }]}>
             <Feather name="search" size={16} color={colors.mutedForeground} />
             <TextInput
               style={[styles.searchInput, { color: colors.foreground }]}
-              placeholder="Search city or country…"
+              placeholder={t("searchCity")}
               placeholderTextColor={colors.mutedForeground}
               value={query}
               onChangeText={setQuery}

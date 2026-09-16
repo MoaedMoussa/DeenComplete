@@ -19,26 +19,31 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AppProvider } from "@/contexts/AppContext";
+import { AppProvider, useApp } from "@/contexts/AppContext";
+import { useT } from "@/constants/i18n";
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
+  const { settings } = useApp();
+  const t = useT(settings.language);
+  const ar = settings.language === "ar";
+
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="quran/[surahId]" options={{ headerShown: true, title: "Surah", headerBackTitle: "Quran" }} />
-      <Stack.Screen name="qibla" options={{ headerShown: true, title: "Qibla", headerBackTitle: "Prayer" }} />
-      <Stack.Screen name="prayer-tracker" options={{ headerShown: true, title: "Prayer Tracker", headerBackTitle: "Prayer" }} />
-      <Stack.Screen name="duas" options={{ headerShown: true, title: "Duas", headerBackTitle: "More" }} />
-      <Stack.Screen name="hadith" options={{ headerShown: true, title: "Hadith", headerBackTitle: "More" }} />
-      <Stack.Screen name="zakat" options={{ headerShown: true, title: "Zakat Calculator", headerBackTitle: "More" }} />
-      <Stack.Screen name="hajj" options={{ headerShown: true, title: "Hajj & Umrah", headerBackTitle: "More" }} />
-      <Stack.Screen name="calendar" options={{ headerShown: true, title: "Islamic Calendar", headerBackTitle: "More" }} />
-      <Stack.Screen name="names" options={{ headerShown: true, title: "99 Names of Allah", headerBackTitle: "More" }} />
-      <Stack.Screen name="settings" options={{ headerShown: true, title: "Settings", headerBackTitle: "More" }} />
+      <Stack.Screen name="quran/[surahId]" options={{ headerShown: true, title: ar ? "سورة" : "Surah", headerBackTitle: t("quran") }} />
+      <Stack.Screen name="qibla" options={{ headerShown: true, title: t("qiblaCompass"), headerBackTitle: t("prayer") }} />
+      <Stack.Screen name="prayer-tracker" options={{ headerShown: true, title: t("prayerTracker"), headerBackTitle: t("prayer") }} />
+      <Stack.Screen name="duas" options={{ headerShown: true, title: t("duaLibrary"), headerBackTitle: t("more") }} />
+      <Stack.Screen name="hadith" options={{ headerShown: true, title: t("hadithLibrary"), headerBackTitle: t("more") }} />
+      <Stack.Screen name="zakat" options={{ headerShown: true, title: t("zakatCalc"), headerBackTitle: t("more") }} />
+      <Stack.Screen name="hajj" options={{ headerShown: true, title: t("hajjGuide"), headerBackTitle: t("more") }} />
+      <Stack.Screen name="calendar" options={{ headerShown: true, title: t("islamicCalendar"), headerBackTitle: t("more") }} />
+      <Stack.Screen name="names" options={{ headerShown: true, title: t("names99"), headerBackTitle: t("more") }} />
+      <Stack.Screen name="settings" options={{ headerShown: true, title: t("settings"), headerBackTitle: t("more") }} />
     </Stack>
   );
 }

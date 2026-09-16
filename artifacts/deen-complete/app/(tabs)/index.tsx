@@ -12,6 +12,7 @@ import { useApp } from "@/contexts/AppContext";
 import { getAllPrayerEntries, getNextPrayerEntry, formatTime, formatCountdown, getHijriDate } from "@/data/prayers";
 import { getDailyVerse, allSurahsList } from "@/data/quran";
 import { getDailyHadith } from "@/data/hadith";
+import { useT } from "@/constants/i18n";
 
 const PRAYER_KEYS = ["fajr", "dhuhr", "asr", "maghrib", "isha"] as const;
 const PRAYER_ICON_NAME: Record<string, string> = {
@@ -22,27 +23,16 @@ const PRAYER_ICON_NAME: Record<string, string> = {
   isha: "moon",
 };
 
-type ActionIcon = { lib: "Ionicons" | "MaterialCommunityIcons"; name: string };
-const ACTIONS: { icon: ActionIcon; label: string; route: string }[] = [
-  { icon: { lib: "Ionicons", name: "compass-outline" }, label: "Qibla", route: "/qibla" },
-  { icon: { lib: "Ionicons", name: "hand-left-outline" }, label: "Duas", route: "/duas" },
-  { icon: { lib: "Ionicons", name: "book-outline" }, label: "Hadith", route: "/hadith" },
-  { icon: { lib: "Ionicons", name: "infinite-outline" }, label: "99 Names", route: "/names" },
-  { icon: { lib: "Ionicons", name: "calculator-outline" }, label: "Zakat", route: "/zakat" },
-  { icon: { lib: "MaterialCommunityIcons", name: "mosque" }, label: "Hajj Guide", route: "/hajj" },
-  { icon: { lib: "Ionicons", name: "calendar-outline" }, label: "Calendar", route: "/calendar" },
-  { icon: { lib: "Ionicons", name: "stats-chart-outline" }, label: "Tracker", route: "/prayer-tracker" },
-];
-
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { prayerTimes, location, prayerLogs, refreshPrayerTimes } = useApp();
+  const { prayerTimes, location, prayerLogs, refreshPrayerTimes, settings } = useApp();
+  const t = useT(settings.language);
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 15000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(new Date()), 15000);
+    return () => clearInterval(timer);
   }, []);
 
   const tz = location?.timezone;
@@ -56,9 +46,23 @@ export default function HomeScreen() {
   const todayLog = prayerLogs.find(l => l.date === todayKey);
   const prayedCount = PRAYER_KEYS.filter(p => todayLog?.[p] === "prayed").length;
 
-  const greeting = now.getHours() < 12 ? "Good Morning" : now.getHours() < 17 ? "Good Afternoon" : "Good Evening";
+  const hour = now.getHours();
+  const greeting = hour < 12 ? t("goodMorning") : hour < 17 ? t("goodAfternoon") : t("goodEvening");
   const colorScheme = useColorScheme();
   const topPad = Platform.OS === "web" ? 0 : insets.top;
+
+  type ActionIcon = { lib: "Ionicons" | "MaterialCommunityIcons"; name: string };
+  const ACTIONS: { icon: ActionIcon; label: string; route: string }[] = [
+    { icon: { lib: "Ionicons", name: "compass-outline" }, label: t("qiblaCompass"), route: "/qibla" },
+    { icon: { lib: "Ionicons", name: "hand-left-outline" }, label: t("duaLibrary"), route: "/duas" },
+    { icon: { lib: "Ionicons", name: "book-outline" }, label: t("hadithLibrary"), route: "/hadith" },
+    { icon: { lib: "Ionicons", name: "infinite-outline" }, label: t("names99"), route: "/names" },
+    { icon: { lib: "Ionicons", name: "calculator-outline" }, label: t("zakatCalc"), route: "/zakat" },
+    { icon: { lib: "MaterialCommunityIcons", name: "mosque" }, label: t("hajjGuide"), route: "/hajj" },
+    { icon: { lib: "Ionicons", name: "calendar-outline" }, label: t("islamicCalendar"), route: "/calendar" },
+    { icon: { lib: "Ionicons", name: "stats-chart-outline" }, label: t("prayerTracker"), route: "/prayer-tracker" },
+    { icon: { lib: "Ionicons", name: "book" }, label: t("quranLog"), route: "/quran-tracker" },
+  ];
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -78,7 +82,7 @@ export default function HomeScreen() {
             >
               <Feather name="map-pin" size={11} color={colors.primary} />
               <Text style={[styles.locationTxt, { color: colors.primary }]}>
-                {location ? `${location.city}, ${location.country}` : "Detecting location…"}
+                {location ? `${location.city}, ${location.country}` : t("detectingLocation")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -102,10 +106,10 @@ export default function HomeScreen() {
           {next ? (
             <>
               <View>
-                <Text style={styles.heroLabel}>Next Prayer</Text>
+                <Text style={styles.heroLabel}>{t("nextPrayerLabel")}</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 }}>
                   <Ionicons name={PRAYER_ICON_NAME[next.key] as any} size={26} color="#fff" />
-                  <Text style={styles.heroName}>{next.name}</Text>
+                  <Text style={styles.heroName}>{t(next.key as any)}</Text>
                 </View>
                 <Text style={[styles.heroNameAr, { fontFamily: "Amiri_400Regular" }]}>{next.nameArabic}</Text>
               </View>
@@ -120,7 +124,7 @@ export default function HomeScreen() {
               </View>
             </>
           ) : (
-            <Text style={[styles.heroName, { color: "#fff" }]}>All Prayers Complete 🌙</Text>
+            <Text style={[styles.heroName, { color: "#fff" }]}>{t("allPrayersDone")} 🌙</Text>
           )}
 
           {/* Progress dots */}
@@ -164,7 +168,7 @@ export default function HomeScreen() {
               >
                 <Ionicons name={PRAYER_ICON_NAME[p.key] as any} size={18} color={isNext ? colors.primary : colors.mutedForeground} style={{ marginBottom: 2 }} />
                 <Text style={[styles.pillName, { color: isNext ? colors.primary : colors.mutedForeground }]}>
-                  {p.name}
+                  {t(p.key as any)}
                 </Text>
                 <Text style={[styles.pillTime, { color: isNext ? colors.primary : colors.foreground }]}>
                   {formatTime(p.time, tz)}
@@ -184,7 +188,7 @@ export default function HomeScreen() {
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, marginHorizontal: 16 }]}>
           <View style={styles.cardTag}>
             <View style={[styles.tagDot, { backgroundColor: colors.primary }]} />
-            <Text style={[styles.tagTxt, { color: colors.primary }]}>Verse of the Day</Text>
+            <Text style={[styles.tagTxt, { color: colors.primary }]}>{t("verseOfDay")}</Text>
             <Text style={[styles.tagRef, { color: colors.mutedForeground }]}>
               {verseSurahName} {verse.surahId}:{verse.verseNumber}
             </Text>
@@ -197,7 +201,7 @@ export default function HomeScreen() {
             style={[styles.readBtn, { borderColor: colors.primary + "40" }]}
             onPress={() => router.push(`/quran/${verse.surahId}`)}
           >
-            <Text style={[styles.readBtnTxt, { color: colors.primary }]}>Read Full Surah</Text>
+            <Text style={[styles.readBtnTxt, { color: colors.primary }]}>{t("readFullSurah")}</Text>
             <Feather name="chevron-right" size={13} color={colors.primary} />
           </TouchableOpacity>
         </View>
@@ -213,7 +217,7 @@ export default function HomeScreen() {
         }]}>
           <View style={styles.cardTag}>
             <View style={[styles.tagDot, { backgroundColor: colors.accent }]} />
-            <Text style={[styles.tagTxt, { color: colors.accent }]}>Hadith of the Day</Text>
+            <Text style={[styles.tagTxt, { color: colors.accent }]}>{t("hadithOfDay")}</Text>
             <Text style={[styles.tagRef, { color: colors.mutedForeground }]}>{hadith.collection}</Text>
           </View>
           <Text style={[styles.hadithAr, { color: colors.accent, fontFamily: "Amiri_400Regular" }]}>
@@ -224,11 +228,11 @@ export default function HomeScreen() {
         </View>
 
         {/* ── QUICK ACTIONS ── */}
-        <Text style={[styles.sectionHead, { color: colors.foreground, marginTop: 20 }]}>Explore</Text>
+        <Text style={[styles.sectionHead, { color: colors.foreground, marginTop: 20 }]}>{t("explore")}</Text>
         <View style={styles.actionsGrid}>
           {ACTIONS.map(a => (
             <TouchableOpacity
-              key={a.label}
+              key={a.route}
               style={[styles.actionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               onPress={() => router.push(a.route as any)}
               activeOpacity={0.8}

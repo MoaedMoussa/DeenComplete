@@ -9,21 +9,26 @@ import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/contexts/AppContext";
 import { CALCULATION_METHODS } from "@/data/prayers";
+import { useT } from "@/constants/i18n";
+import { I18nManager } from "react-native";
+import * as Updates from "expo-updates";
+import Slider from "@react-native-community/slider";
 
 const MADHAB_OPTIONS = [
   { id: "Shafi", name: "Shafi / Maliki / Hanbali", desc: "Earlier Asr time" },
   { id: "Hanafi", name: "Hanafi", desc: "Later Asr time" },
 ];
 
-const LANGUAGE_OPTIONS = [
-  { id: "en" as const, name: "English", desc: "App displayed in English" },
-  { id: "ar" as const, name: "العربية", desc: "التطبيق بالعربية" },
-];
-
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { settings, updateSettings } = useApp();
+  const t = useT(settings.language);
+
+  const LANGUAGE_OPTIONS = [
+    { id: "en" as const, name: t("english"), desc: t("englishDesc") },
+    { id: "ar" as const, name: t("arabic"), desc: t("arabicDesc") },
+  ];
 
   const isWeb = Platform.OS === "web";
   const bottomPad = isWeb ? 34 : insets.bottom;
@@ -36,17 +41,36 @@ export default function SettingsScreen() {
     updateSettings({ [key]: !settings[key as keyof typeof settings] });
   }
 
+  const handleLanguageChange = async (lang: "en" | "ar") => {
+    haptic();
+    updateSettings({ language: lang });
+    
+    if (Platform.OS === "web") {
+      document.dir = lang === "ar" ? "rtl" : "ltr";
+    } else {
+      if (lang === "ar" && !I18nManager.isRTL) {
+        I18nManager.allowRTL(true);
+        I18nManager.forceRTL(true);
+        try { await Updates.reloadAsync(); } catch (e) {}
+      } else if (lang === "en" && I18nManager.isRTL) {
+        I18nManager.allowRTL(false);
+        I18nManager.forceRTL(false);
+        try { await Updates.reloadAsync(); } catch (e) {}
+      }
+    }
+  };
+
   return (
     <ScrollView style={s.container} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
 
       {/* Language */}
-      <Text style={s.sectionTitle}>Language / اللغة</Text>
+      <Text style={s.sectionTitle}>{t("language")}</Text>
       <View style={s.card}>
         {LANGUAGE_OPTIONS.map((lang, idx) => (
           <TouchableOpacity
             key={lang.id}
             style={[s.optionRow, idx < LANGUAGE_OPTIONS.length - 1 && s.optionDivider]}
-            onPress={() => { haptic(); updateSettings({ language: lang.id }); }}
+            onPress={() => handleLanguageChange(lang.id)}
           >
             <View style={s.optionLeft}>
               <Text style={s.optionName}>{lang.name}</Text>
@@ -61,11 +85,11 @@ export default function SettingsScreen() {
 
       {/* Prayer Calculation */}
       <Text style={s.sectionTitle}>
-        {settings.language === "ar" ? "حساب مواقيت الصلاة" : "Prayer Time Calculation"}
+        {t("prayerCalculation")}
       </Text>
       <View style={s.card}>
         <Text style={s.cardSubtitle}>
-          {settings.language === "ar" ? "طريقة الحساب" : "Calculation Method"}
+          {t("calculationMethod")}
         </Text>
         {CALCULATION_METHODS.map((method, idx) => (
           <TouchableOpacity
@@ -86,7 +110,7 @@ export default function SettingsScreen() {
 
       <View style={s.card}>
         <Text style={s.cardSubtitle}>
-          {settings.language === "ar" ? "مذهب وقت العصر" : "Asr Madhab"}
+          {t("asrMadhab")}
         </Text>
         {MADHAB_OPTIONS.map((m, idx) => (
           <TouchableOpacity
@@ -107,19 +131,19 @@ export default function SettingsScreen() {
 
       {/* Notifications */}
       <Text style={s.sectionTitle}>
-        {settings.language === "ar" ? "الإشعارات" : "Notifications"}
+        {t("notifications")}
       </Text>
       <View style={s.card}>
         {[
           {
             key: "notifications",
-            label: settings.language === "ar" ? "إشعارات الصلاة" : "Prayer Notifications",
-            sub: settings.language === "ar" ? "تنبيهات الأذان لكل صلاة" : "Adhan alerts for each prayer",
+            label: t("prayerNotifications"),
+            sub: t("adhanAlertsDesc"),
           },
           {
             key: "adhanEnabled",
-            label: settings.language === "ar" ? "تشغيل الأذان" : "Play Adhan",
-            sub: settings.language === "ar" ? "صوت الأذان مع الإشعار" : "Audio adhan on notification",
+            label: t("playAdhan"),
+            sub: t("audioAdhanDesc"),
           },
         ].map((item, idx, arr) => (
           <View key={item.key} style={[s.switchRow, idx < arr.length - 1 && s.optionDivider]}>
@@ -139,19 +163,19 @@ export default function SettingsScreen() {
 
       {/* Quran Display */}
       <Text style={s.sectionTitle}>
-        {settings.language === "ar" ? "عرض القرآن" : "Quran Display"}
+        {t("quranDisplay")}
       </Text>
       <View style={s.card}>
         {[
           {
             key: "showTranslation",
-            label: settings.language === "ar" ? "إظهار الترجمة" : "Show Translation",
-            sub: settings.language === "ar" ? "عرض الترجمة الإنجليزية" : "Display English translation",
+            label: t("showTranslation"),
+            sub: t("showTranslationDesc"),
           },
           {
             key: "showTransliteration",
-            label: settings.language === "ar" ? "إظهار النطق اللاتيني" : "Show Transliteration",
-            sub: settings.language === "ar" ? "عرض الكتابة الصوتية" : "Display Latin script pronunciation",
+            label: t("showTransliteration"),
+            sub: t("showTransliterationDesc"),
           },
         ].map((item, idx, arr) => (
           <View key={item.key} style={[s.switchRow, idx < arr.length - 1 && s.optionDivider]}>
@@ -168,53 +192,71 @@ export default function SettingsScreen() {
           </View>
         ))}
 
-        <View style={s.switchRow}>
-          <View style={s.optionLeft}>
-            <Text style={s.optionName}>
-              {settings.language === "ar" ? "حجم الخط العربي" : "Arabic Font Size"}
-            </Text>
-            <Text style={s.optionSub}>
-              {settings.language === "ar" ? `الحجم الحالي: ${settings.arabicFontSize}` : `Current: ${settings.arabicFontSize}px`}
-            </Text>
-          </View>
-          <View style={s.fontSizeRow}>
-            <TouchableOpacity
-              style={s.fontSizeBtn}
-              onPress={() => updateSettings({ arabicFontSize: Math.max(18, settings.arabicFontSize - 2) })}
-            >
-              <Feather name="minus" size={14} color={colors.primary} />
-            </TouchableOpacity>
+        <View style={[s.optionRow, s.optionDivider, { flexDirection: "column", alignItems: "stretch", gap: 12 }]}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View>
+              <Text style={s.optionName}>{t("arabicFontSize")}</Text>
+              <Text style={s.optionSub}>
+                {settings.language === "ar" ? `الحجم الحالي: ${settings.arabicFontSize}` : `Current: ${settings.arabicFontSize}px`}
+              </Text>
+            </View>
             <Text style={s.fontSizeVal}>{settings.arabicFontSize}</Text>
-            <TouchableOpacity
-              style={s.fontSizeBtn}
-              onPress={() => updateSettings({ arabicFontSize: Math.min(38, settings.arabicFontSize + 2) })}
-            >
-              <Feather name="plus" size={14} color={colors.primary} />
-            </TouchableOpacity>
           </View>
+          <Slider
+            style={{ width: "100%", height: 40 }}
+            minimumValue={18}
+            maximumValue={48}
+            step={2}
+            value={settings.arabicFontSize}
+            onSlidingComplete={(val) => updateSettings({ arabicFontSize: val })}
+            minimumTrackTintColor={colors.primary}
+            maximumTrackTintColor={colors.muted}
+            thumbTintColor={colors.primary}
+          />
+        </View>
+
+        <View style={[s.optionRow, { flexDirection: "column", alignItems: "stretch", gap: 12 }]}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View>
+              <Text style={s.optionName}>{t("translationFontSize")}</Text>
+              <Text style={s.optionSub}>
+                {settings.language === "ar" ? `الحجم الحالي: ${settings.translationFontSize}` : `Current: ${settings.translationFontSize}px`}
+              </Text>
+            </View>
+            <Text style={s.fontSizeVal}>{settings.translationFontSize}</Text>
+          </View>
+          <Slider
+            style={{ width: "100%", height: 40 }}
+            minimumValue={12}
+            maximumValue={32}
+            step={2}
+            value={settings.translationFontSize}
+            onSlidingComplete={(val) => updateSettings({ translationFontSize: val })}
+            minimumTrackTintColor={colors.primary}
+            maximumTrackTintColor={colors.muted}
+            thumbTintColor={colors.primary}
+          />
         </View>
       </View>
 
       {/* Appearance */}
-      <Text style={s.sectionTitle}>
-        {settings.language === "ar" ? "المظهر" : "Appearance"}
-      </Text>
+      <Text style={s.sectionTitle}>{t("appearance")}</Text>
       <View style={s.card}>
         {([
           {
             id: "system" as const,
-            name: settings.language === "ar" ? "وضع النظام" : "System Mode",
-            desc: settings.language === "ar" ? "اتباع إعداد الجهاز" : "Follow device setting",
+            name: t("systemMode"),
+            desc: t("followDevice"),
           },
           {
             id: "light" as const,
-            name: settings.language === "ar" ? "الوضع الفاتح" : "Light Mode",
-            desc: settings.language === "ar" ? "فاتح دائمًا" : "Always light",
+            name: t("lightMode"),
+            desc: t("alwaysLight"),
           },
           {
             id: "dark" as const,
-            name: settings.language === "ar" ? "الوضع الداكن" : "Dark Mode",
-            desc: settings.language === "ar" ? "داكن دائمًا" : "Always dark",
+            name: t("darkMode"),
+            desc: t("alwaysDark"),
           },
         ]).map((theme, idx, arr) => (
           <TouchableOpacity

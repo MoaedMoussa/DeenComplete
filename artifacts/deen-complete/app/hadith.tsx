@@ -15,9 +15,12 @@ import {
   type LocalHadith,
 } from "@/data/hadiths";
 
+import { useApp } from "@/contexts/AppContext";
+
 export default function HadithScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { settings } = useApp();
 
   const [selectedCollection, setSelectedCollection] = useState(COLLECTIONS[0]);
   const [collectionOpen, setCollectionOpen] = useState(false);
@@ -70,8 +73,8 @@ export default function HadithScreen() {
       padding: 16, borderWidth: 1, borderColor: colors.border,
     },
     hadithNum: { fontSize: 11, fontFamily: "Inter_500Medium", color: colors.mutedForeground, marginBottom: 6 },
-    hadithAr: { fontSize: 16, fontFamily: "Amiri_400Regular", color: colors.foreground, textAlign: "right", lineHeight: 28, marginBottom: 8 },
-    hadithEn: { fontSize: 13, fontFamily: "Inter_400Regular", color: colors.foreground, lineHeight: 20 },
+    hadithAr: { fontSize: settings.arabicFontSize || 16, fontFamily: "Amiri_400Regular", color: colors.foreground, textAlign: "right", lineHeight: (settings.arabicFontSize || 16) * 1.75, marginBottom: 8 },
+    hadithEn: { fontSize: settings.translationFontSize || 13, fontFamily: "Inter_400Regular", color: colors.foreground, lineHeight: (settings.translationFontSize || 13) * 1.5 },
     hadithNarrator: { fontSize: 11, fontFamily: "Inter_500Medium", color: colors.primary, marginTop: 8 },
     tapHint: { fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 8, fontStyle: "italic" },
     empty: { alignItems: "center", paddingTop: 60, gap: 12 },

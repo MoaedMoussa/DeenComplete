@@ -3,14 +3,81 @@ import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
 import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { Feather } from "@expo/vector-icons";
-import React from "react";
-import { Platform, StyleSheet, View, useColorScheme } from "react-native";
+import React, { useEffect } from "react";
+import { Platform, StyleSheet, View, Text, TouchableOpacity, useColorScheme, Modal } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/contexts/AppContext";
+import * as Updates from "expo-updates";
+import { I18nManager } from "react-native";
+
+function LanguageSelectionModal() {
+  const { settings, updateSettings } = useApp();
+  const colors = useColors();
+
+  if (settings.hasChosenLanguage) return null;
+
+  const selectLang = async (lang: "en" | "ar") => {
+    updateSettings({ language: lang, hasChosenLanguage: true });
+    
+    if (Platform.OS === "web") {
+      document.dir = lang === "ar" ? "rtl" : "ltr";
+    } else {
+      if (lang === "ar" && !I18nManager.isRTL) {
+        I18nManager.allowRTL(true);
+        I18nManager.forceRTL(true);
+        try {
+          await Updates.reloadAsync();
+        } catch (e) {}
+      } else if (lang === "en" && I18nManager.isRTL) {
+        I18nManager.allowRTL(false);
+        I18nManager.forceRTL(false);
+        try {
+          await Updates.reloadAsync();
+        } catch (e) {}
+      }
+    }
+  };
+
+  return (
+    <Modal visible transparent animationType="fade">
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 20 }}>
+        <View style={{ backgroundColor: colors.card, width: "100%", borderRadius: 20, padding: 24, alignItems: "center" }}>
+          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: colors.foreground, marginBottom: 8 }}>
+            Welcome / أهلاً بك
+          </Text>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: colors.mutedForeground, textAlign: "center", marginBottom: 24 }}>
+            Please select your preferred language.
+            {"\n"}يرجى اختيار لغتك المفضلة.
+          </Text>
+
+          <TouchableOpacity
+            style={{ width: "100%", backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: "center", marginBottom: 12 }}
+            onPress={() => selectLang("ar")}
+          >
+            <Text style={{ fontFamily: "Amiri_700Bold", fontSize: 20, color: "#fff" }}>العربية</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{ width: "100%", backgroundColor: colors.muted, paddingVertical: 14, borderRadius: 12, alignItems: "center" }}
+            onPress={() => selectLang("en")}
+          >
+            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 18, color: colors.foreground }}>English</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 function NativeTabLayout() {
   const { settings } = useApp();
   const ar = settings.language === "ar";
+
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      document.dir = settings.language === "ar" ? "rtl" : "ltr";
+    }
+  }, [settings.language]);
 
   return (
     <NativeTabs>
@@ -46,6 +113,12 @@ function ClassicTabLayout() {
   const isWeb = Platform.OS === "web";
   const { settings } = useApp();
   const ar = settings.language === "ar";
+
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      document.dir = settings.language === "ar" ? "rtl" : "ltr";
+    }
+  }, [settings.language]);
 
   return (
     <Tabs
@@ -119,7 +192,17 @@ function ClassicTabLayout() {
 
 export default function TabLayout() {
   if (isLiquidGlassAvailable()) {
-    return <NativeTabLayout />;
+    return (
+      <>
+        <LanguageSelectionModal />
+        <NativeTabLayout />
+      </>
+    );
   }
-  return <ClassicTabLayout />;
+  return (
+    <>
+      <LanguageSelectionModal />
+      <ClassicTabLayout />
+    </>
+  );
 }
